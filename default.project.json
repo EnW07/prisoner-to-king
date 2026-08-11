@@ -1,0 +1,47 @@
+{
+  "name": "prisoner-to-king",
+  "globIgnorePaths": ["**/.DS_Store"],
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "Shared": { "$path": "src/shared" }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
+      "Bootstrap": { "$path": "src/server/Bootstrap.server.luau" },
+      "Services": { "$path": "src/server/Services" }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$ignoreUnknownInstances": true,
+        "ClientBootstrap": { "$path": "src/client/ClientBootstrap.client.luau" },
+        "Controllers": { "$path": "src/client/Controllers" }
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$ignoreUnknownInstances": true,
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+
+    "SoundService": {
+      "$className": "SoundService",
+      "$ignoreUnknownInstances": true,
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}

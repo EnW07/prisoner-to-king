@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    name: Luau syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Luau toolchain
+        run: |
+          curl -sL -o luau.zip https://github.com/luau-lang/luau/releases/latest/download/luau-ubuntu.zip
+          unzip -q luau.zip
+          chmod +x luau-compile
+
+      # Catches every parse error before it reaches Studio. Deliberately NOT a type check:
+      # Roblox globals aren't in scope here, so a full analyse would be all false positives.
+      - name: Compile every source file
+        run: |
+          fail=0
+          for f in $(find src -name "*.luau"); do
+            if ! ./luau-compile --binary "$f" > /dev/null; then
+              echo "::error file=$f::Luau parse error"
+              fail=1
+            fi
+          done
+          exit $fail
+
+  format:
+    name: StyLua
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: JohnnyMorganz/stylua-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check src

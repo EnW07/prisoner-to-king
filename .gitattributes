@@ -1,0 +1,9 @@
+# Normalise line endings. Luau files stay LF everywhere, including on Windows,
+# so diffs don't churn when the repo moves between machines.
+* text=auto eol=lf
+
+# Never treat Roblox binaries as text
+*.rbxl  binary
+*.rbxm  binary
+*.rbxlx binary
+*.rbxmx binary

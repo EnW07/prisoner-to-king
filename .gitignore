@@ -1,0 +1,30 @@
+# Roblox place files — the source of truth is src/, never a binary place
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxm
+*.rbxmx
+
+# Rojo / tooling
+sourcemap.json
+/build/
+/out/
+
+# Tool managers
+.rokit/
+.aftman/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit API keys, Open Cloud keys, or DataStore dumps
+.env
+*.key
+secrets*.json

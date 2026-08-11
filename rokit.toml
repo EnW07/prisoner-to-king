@@ -1,0 +1,5 @@
+# Tool versions for this project. Install Rokit, then run `rokit install` in the repo root.
+# If a pinned version is stale, run `rokit add rojo-rbx/rojo` to grab the current release.
+[tools]
+rojo = "rojo-rbx/rojo@7.4.4"
+stylua = "JohnnyMorganz/StyLua@0.20.0"
