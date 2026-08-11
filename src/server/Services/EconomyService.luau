@@ -79,6 +79,14 @@ function EconomyService.PushState(player: Player)
 		WeaponRackLevel = profile.Castle.WeaponRackLevel or 0,
 		WeaponRackCost = require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponRackCost,
 		TotalEscapes = profile.Meta.TotalEscapes or 0,
+
+		-- Per-player prompt state. Prompt.Enabled is replicated (shared), so the client gates
+		-- its own prompts from these fields instead. (M1 bugs 1/2/4/5.)
+		ChainsBroken = run and run.ChainsBroken or false,
+		HasWeapon = profile.Equipped.WeaponId ~= "fists",
+		ChestOpened = run and run.ChestOpened or false,
+		DoorOpened = run and run.DoorOpened or false,
+		UpgradeCost = (ctx.Upgrade and ctx.Upgrade.GetCost(player)) or 0,
 	})
 end
 

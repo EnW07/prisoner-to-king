@@ -57,7 +57,12 @@ function InteractionService.Init(context, builtWorld)
 	Notify = Net.Event("Notify")
 
 	-- ── 1. BREAK YOUR CHAINS ───────────────────────────────────
+	-- NOTE: the server never toggles prompt.Enabled — that property is replicated and would
+	-- be global to every player. Each prompt is tagged with a PTKGate attribute and the
+	-- client's PromptController shows/hides it per-player from StateUpdate. The server still
+	-- re-validates every Triggered call, so this loses no authority. (M1 bugs 1/2/5.)
 	local chainPrompt = makePrompt(world.Chain, "Break", "BREAK YOUR CHAINS", 0.35)
+	chainPrompt:SetAttribute("PTKGate", "chains")
 	chainPrompt.Triggered:Connect(function(player)
 		if not validate(player, world.Chain) then
 			return
@@ -77,6 +82,7 @@ function InteractionService.Init(context, builtWorld)
 
 	-- ── 2. GRAB A WEAPON ───────────────────────────────────────
 	local weaponPrompt = makePrompt(world.WeaponPlank, "Take", "GRAB A WEAPON")
+	weaponPrompt:SetAttribute("PTKGate", "weapon")
 	weaponPrompt.Triggered:Connect(function(player)
 		if not validate(player, world.WeaponPlank) then
 			return
@@ -102,6 +108,7 @@ function InteractionService.Init(context, builtWorld)
 
 	-- ── 3. UNLOCK THE CELLBLOCK ────────────────────────────────
 	local doorPrompt = makePrompt(world.LockedDoor, "Unlock", "LOCKED — NEEDS KEY", 0.5)
+	doorPrompt:SetAttribute("PTKGate", "door")
 	doorPrompt.Triggered:Connect(function(player)
 		if not validate(player, world.LockedDoor) then
 			return
@@ -116,25 +123,21 @@ function InteractionService.Init(context, builtWorld)
 			return
 		end
 
+		run.DoorOpened = true
 		ctx.Analytics.Log(player, "DoorUnlocked", 1)
 		Notify:FireClient(player, { Text = "CELLBLOCK OPEN", Kind = "milestone" })
+		-- SetObjective pushes state, so the DoorOpened = true above rides along to the client.
 		ctx.RunState.SetObjective(player, "TAKE THE SWORD")
 
-		-- Open for everyone in the server, then re-lock so the next run repeats the beat.
-		world.LockedDoor.CanCollide = false
-		world.LockedDoor.Transparency = 0.75
-		doorPrompt.Enabled = false
-		task.delay(30, function()
-			if world.LockedDoor and world.LockedDoor.Parent then
-				world.LockedDoor.CanCollide = true
-				world.LockedDoor.Transparency = 0
-				doorPrompt.Enabled = true
-			end
-		end)
+		-- The door is a shared, replicated part — the server must NOT change its CanCollide
+		-- or Transparency, or it would open for every player at once and stay open across
+		-- runs (the M1 regression). Instead the client's "door" gate opens it locally for
+		-- this player only, this run only. `run.DoorOpened` is reset by StartRun.
 	end)
 
 	-- ── 4. THE CHEST → ALARM ───────────────────────────────────
 	local chestPrompt = makePrompt(world.Chest, "Open", "CHEST", 0.6)
+	chestPrompt:SetAttribute("PTKGate", "chest")
 	chestPrompt.Triggered:Connect(function(player)
 		if not validate(player, world.Chest) then
 			return
@@ -154,13 +157,10 @@ function InteractionService.Init(context, builtWorld)
 
 		InteractionService.TriggerAlarm(player)
 
-		chestPrompt.Enabled = false
-		task.delay(30, function()
-			if chestPrompt and chestPrompt.Parent then
-				chestPrompt.Enabled = true
-				run.ChestOpened = false
-			end
-		end)
+		-- The chest gives loot exactly once per run. `run.ChestOpened` stays true for the
+		-- life of this run; StartRun mints a fresh run record on re-entry, so the next run
+		-- gets its guaranteed chest again. The client's "chest" gate hides the prompt for
+		-- this player only. (Bug 2: the old 30s re-arm let a player farm the chest.)
 	end)
 end
 
@@ -204,13 +204,11 @@ function InteractionService.ReleaseChains(player: Player)
 	humanoid.WalkSpeed = GameConfig.Player.WalkSpeed
 	humanoid.JumpPower = GameConfig.Player.JumpPower
 
-	if world and world.Chain then
-		world.Chain.Transparency = 0.6
-		task.delay(3, function()
-			if world.Chain then
-				world.Chain.Transparency = 0
-			end
-		end)
+	-- Feedback: let the chain physically drop once, instead of a meaningless 3s transparency
+	-- blip. It's a shared graybox prop, so we only unanchor it the first time.
+	if world and world.Chain and world.Chain.Anchored then
+		world.Chain.CanCollide = true
+		world.Chain.Anchored = false
 	end
 end
 

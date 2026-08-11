@@ -32,14 +32,13 @@ function UpgradeService.Init(context, builtWorld)
 	world = builtWorld
 	Notify = Net.Event("Notify")
 
-	upgradePrompt = makePrompt(
-		world.UpgradePad,
-		"Upgrade",
-		("UPGRADE ARMORY — %d Gold"):format(GameConfig.Economy.WeaponRackCost),
-		0.4
-	)
+	-- Price-free label. ProximityPrompt.ObjectText is replicated, so it can never show a
+	-- per-player price from here; PromptController writes the live cost locally per client.
+	upgradePrompt = makePrompt(world.UpgradePad, "Upgrade", "UPGRADE ARMORY", 0.4)
+	upgradePrompt:SetAttribute("PTKGate", "upgrade")
 
 	reenterPrompt = makePrompt(world.ReenterPad, "Enter", "BREAK INTO THE CASTLE AGAIN", 0.4)
+	reenterPrompt:SetAttribute("PTKGate", "reenter")
 
 	upgradePrompt.Triggered:Connect(function(player)
 		UpgradeService.BuyWeaponRack(player)
@@ -48,6 +47,14 @@ function UpgradeService.Init(context, builtWorld)
 	reenterPrompt.Triggered:Connect(function(player)
 		UpgradeService.ReenterDungeon(player)
 	end)
+end
+
+-- Per-player cost of the NEXT armory level. Sent in StateUpdate so the client can render an
+-- accurate price without the (replicated, shared) prompt label ever going stale. (Bug 4.)
+function UpgradeService.GetCost(player: Player): number
+	local profile = ctx and ctx.Data.Get(player)
+	local level = profile and profile.Castle.WeaponRackLevel or 0
+	return GameConfig.Economy.WeaponRackCost * (level + 1)
 end
 
 function UpgradeService.BuyWeaponRack(player: Player)
@@ -68,7 +75,7 @@ function UpgradeService.BuyWeaponRack(player: Player)
 	-- rather than going negative. The grant happens only if it returned true.
 	if not ctx.Economy.TrySpendGold(player, cost, "weapon_rack") then
 		Notify:FireClient(player, {
-			Text = ("NEED %d GOLD"):format(cost - ctx.Economy.GetGold(player)),
+			Text = ("NEED %d MORE GOLD"):format(cost - ctx.Economy.GetGold(player)),
 			Kind = "warn",
 		})
 		return
@@ -91,7 +98,8 @@ function UpgradeService.BuyWeaponRack(player: Player)
 		Kind = "milestone",
 	})
 
-	ctx.RunState.SetObjective(player, "THE CAPTAIN HAS BETTER GEAR")
+	-- Bug 3: point at content that exists in M1. The Captain hook returns in M2 (blueprint §82).
+	ctx.RunState.SetObjective(player, "BREAK INTO THE CASTLE AGAIN")
 	ctx.Data.Save(player, false)
 	ctx.Economy.PushState(player)
 end

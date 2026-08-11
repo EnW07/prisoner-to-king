@@ -30,6 +30,7 @@ function ExtractionService.Init(context, builtWorld)
 	prompt.RequiresLineOfSight = false
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
+	prompt:SetAttribute("PTKGate", "extract")
 	prompt.Parent = world.ExtractionPad
 
 	prompt.PromptButtonHoldBegan:Connect(function(player)
