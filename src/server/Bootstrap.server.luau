@@ -17,16 +17,16 @@ local Net = require(game.ReplicatedStorage.Shared.Net) -- creates the Remotes fo
 
 local ctx = {}
 
-ctx.Analytics    = require(Services.AnalyticsService)
-ctx.Data         = require(Services.PlayerDataService)
-ctx.Economy      = require(Services.EconomyService)
-ctx.RunState     = require(Services.RunStateService)
-ctx.LootService  = require(Services.LootService)
+ctx.Analytics = require(Services.AnalyticsService)
+ctx.Data = require(Services.PlayerDataService)
+ctx.Economy = require(Services.EconomyService)
+ctx.RunState = require(Services.RunStateService)
+ctx.LootService = require(Services.LootService)
 ctx.EnemyService = require(Services.EnemyService)
-ctx.Combat       = require(Services.CombatService)
-ctx.Extraction   = require(Services.ExtractionService)
-ctx.Upgrade      = require(Services.UpgradeService)
-ctx.Interaction  = require(Services.InteractionService)
+ctx.Combat = require(Services.CombatService)
+ctx.Extraction = require(Services.ExtractionService)
+ctx.Upgrade = require(Services.UpgradeService)
+ctx.Interaction = require(Services.InteractionService)
 
 local WorldBuilder = require(Services.WorldBuilder)
 
@@ -62,7 +62,8 @@ Players.PlayerAdded:Connect(function(player)
 		if root then
 			task.wait(0.1)
 			-- Milestone 1: every death restarts the run from the cell.
-			;(root :: BasePart).CFrame = world.CellSpawnCFrame
+			local spawnRoot = root :: BasePart
+			spawnRoot.CFrame = world.CellSpawnCFrame
 		end
 	end)
 end)

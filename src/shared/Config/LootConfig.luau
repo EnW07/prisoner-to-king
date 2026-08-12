@@ -35,7 +35,11 @@ LootConfig.Guarantees = {
 
 LootConfig.Pickups = {
 	Gold = { Color = Color3.fromRGB(255, 200, 60), Size = Vector3.new(1, 1, 1), Label = "Gold" },
-	Key = { Color = Color3.fromRGB(230, 230, 120), Size = Vector3.new(0.6, 1.4, 0.3), Label = "Cellblock Key" },
+	Key = {
+		Color = Color3.fromRGB(230, 230, 120),
+		Size = Vector3.new(0.6, 1.4, 0.3),
+		Label = "Cellblock Key",
+	},
 	Weapon = { Color = Color3.fromRGB(200, 200, 200), Size = Vector3.new(0.6, 2.4, 0.6), Label = "Weapon" },
 	-- Loot bursts out physically and is visible on the floor (§8).
 	BurstForce = 22,

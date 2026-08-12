@@ -38,7 +38,15 @@ local RARITY_COLORS = {
 	Mythic = Color3.fromRGB(255, 70, 70),
 }
 
-local function label(parent: Instance, name: string, size: UDim2, pos: UDim2, text: string, textSize: number, color: Color3): TextLabel
+local function label(
+	parent: Instance,
+	name: string,
+	size: UDim2,
+	pos: UDim2,
+	text: string,
+	textSize: number,
+	color: Color3
+): TextLabel
 	local l = Instance.new("TextLabel")
 	l.Name = name
 	l.Size = size
@@ -63,30 +71,72 @@ function UIController.Init()
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	-- ── Objective (top centre, biggest thing on screen) ────────
-	objectiveLabel = label(gui, "Objective", UDim2.new(1, -40, 0, 44), UDim2.new(0, 20, 0, 44),
-		"", 30, Color3.fromRGB(255, 255, 255))
+	objectiveLabel = label(
+		gui,
+		"Objective",
+		UDim2.new(1, -40, 0, 44),
+		UDim2.new(0, 20, 0, 44),
+		"",
+		30,
+		Color3.fromRGB(255, 255, 255)
+	)
 	objectiveLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 	-- ── Currency (top left) ────────────────────────────────────
-	goldLabel = label(gui, "Gold", UDim2.new(0, 320, 0, 30), UDim2.new(0, 20, 0, 100),
-		"Gold 0", 24, Color3.fromRGB(255, 205, 80))
+	goldLabel = label(
+		gui,
+		"Gold",
+		UDim2.new(0, 320, 0, 30),
+		UDim2.new(0, 20, 0, 100),
+		"Gold 0",
+		24,
+		Color3.fromRGB(255, 205, 80)
+	)
 	goldLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	unsecuredLabel = label(gui, "Unsecured", UDim2.new(0, 360, 0, 28), UDim2.new(0, 20, 0, 132),
-		"", 22, Color3.fromRGB(255, 120, 90))
+	unsecuredLabel = label(
+		gui,
+		"Unsecured",
+		UDim2.new(0, 360, 0, 28),
+		UDim2.new(0, 20, 0, 132),
+		"",
+		22,
+		Color3.fromRGB(255, 120, 90)
+	)
 	unsecuredLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- ── Weapon (bottom left) ───────────────────────────────────
-	weaponLabel = label(gui, "Weapon", UDim2.new(0, 400, 0, 28), UDim2.new(0, 20, 1, -56),
-		"Fists", 22, Color3.fromRGB(220, 220, 230))
+	weaponLabel = label(
+		gui,
+		"Weapon",
+		UDim2.new(0, 400, 0, 28),
+		UDim2.new(0, 20, 1, -56),
+		"Fists",
+		22,
+		Color3.fromRGB(220, 220, 230)
+	)
 	weaponLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- ── Toast (centre) ─────────────────────────────────────────
-	toastLabel = label(gui, "Toast", UDim2.new(1, -60, 0, 44), UDim2.new(0, 30, 0.34, 0),
-		"", 34, Color3.fromRGB(255, 255, 255))
+	toastLabel = label(
+		gui,
+		"Toast",
+		UDim2.new(1, -60, 0, 44),
+		UDim2.new(0, 30, 0.34, 0),
+		"",
+		34,
+		Color3.fromRGB(255, 255, 255)
+	)
 	toastLabel.TextTransparency = 1
-	toastSubLabel = label(gui, "ToastSub", UDim2.new(1, -60, 0, 30), UDim2.new(0, 30, 0.34, 46),
-		"", 24, Color3.fromRGB(200, 255, 200))
+	toastSubLabel = label(
+		gui,
+		"ToastSub",
+		UDim2.new(1, -60, 0, 30),
+		UDim2.new(0, 30, 0.34, 46),
+		"",
+		24,
+		Color3.fromRGB(200, 255, 200)
+	)
 	toastSubLabel.TextTransparency = 1
 
 	-- ── Full-screen moment (ESCAPED / CAPTURED) ────────────────
@@ -99,9 +149,18 @@ function UIController.Init()
 	overlay.ZIndex = 10
 	overlay.Parent = gui
 
-	overlayTitle = label(overlay, "Title", UDim2.new(1, 0, 0, 70), UDim2.new(0, 0, 0.32, 0), "", 62, Color3.new(1, 1, 1))
+	overlayTitle =
+		label(overlay, "Title", UDim2.new(1, 0, 0, 70), UDim2.new(0, 0, 0.32, 0), "", 62, Color3.new(1, 1, 1))
 	overlayTitle.ZIndex = 11
-	overlayBody = label(overlay, "Body", UDim2.new(1, 0, 0, 100), UDim2.new(0, 0, 0.32, 80), "", 26, Color3.fromRGB(230, 230, 230))
+	overlayBody = label(
+		overlay,
+		"Body",
+		UDim2.new(1, 0, 0, 100),
+		UDim2.new(0, 0, 0.32, 80),
+		"",
+		26,
+		Color3.fromRGB(230, 230, 230)
+	)
 	overlayBody.ZIndex = 11
 
 	Net.Event("StateUpdate").OnClientEvent:Connect(UIController.OnState)
@@ -133,7 +192,9 @@ end
 
 local toastToken = 0
 function UIController.OnNotify(data)
-	if not data.Text or data.Text == "" then return end
+	if not data.Text or data.Text == "" then
+		return
+	end
 
 	toastToken += 1
 	local token = toastToken
@@ -150,7 +211,9 @@ function UIController.OnNotify(data)
 	toastSubLabel.TextTransparency = if data.Sub then 0 else 1
 
 	task.delay(1.6, function()
-		if token ~= toastToken then return end
+		if token ~= toastToken then
+			return
+		end
 		TweenService:Create(toastLabel, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
 		TweenService:Create(toastSubLabel, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
 	end)

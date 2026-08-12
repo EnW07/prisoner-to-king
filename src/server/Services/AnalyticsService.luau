@@ -49,8 +49,15 @@ function AnalyticsService.Init(context)
 end
 
 -- fields: a small string→string map. NEVER put personal information in here (§51).
-function AnalyticsService.Log(player: Player, eventName: string, value: number?, fields: { [string]: string }?)
-	if not GameConfig.Analytics.Enabled then return end
+function AnalyticsService.Log(
+	player: Player,
+	eventName: string,
+	value: number?,
+	fields: { [string]: string }?
+)
+	if not GameConfig.Analytics.Enabled then
+		return
+	end
 
 	if ONCE_PER_SESSION[eventName] then
 		local seen = fired[player.UserId]
@@ -58,7 +65,9 @@ function AnalyticsService.Log(player: Player, eventName: string, value: number?,
 			seen = {}
 			fired[player.UserId] = seen
 		end
-		if seen[eventName] then return end
+		if seen[eventName] then
+			return
+		end
 		seen[eventName] = true
 	end
 
@@ -78,7 +87,9 @@ function AnalyticsService.Log(player: Player, eventName: string, value: number?,
 			customFields = {}
 			local slot = 1
 			for _, v in fields do
-				if slot > 3 then break end -- Roblox currently exposes 3 custom field slots
+				if slot > 3 then
+					break
+				end -- Roblox currently exposes 3 custom field slots
 				local key = (Enum.AnalyticsCustomFieldKeys :: any)["CustomField0" .. slot]
 				customFields[key.Name] = tostring(v)
 				slot += 1

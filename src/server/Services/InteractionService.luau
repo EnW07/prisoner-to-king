@@ -19,7 +19,12 @@ local Notify: RemoteEvent
 
 local MAX_PROMPT_DISTANCE = 14
 
-local function makePrompt(parent: BasePart, actionText: string, objectText: string, hold: number?): ProximityPrompt
+local function makePrompt(
+	parent: BasePart,
+	actionText: string,
+	objectText: string,
+	hold: number?
+): ProximityPrompt
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = actionText
 	prompt.ObjectText = objectText
@@ -37,7 +42,9 @@ local function validate(player: Player, target: BasePart): boolean
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not root or not humanoid or humanoid.Health <= 0 then return false end
+	if not root or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
 	if (root.Position - target.Position).Magnitude > MAX_PROMPT_DISTANCE then
 		return false
 	end
@@ -52,9 +59,13 @@ function InteractionService.Init(context, builtWorld)
 	-- ── 1. BREAK YOUR CHAINS ───────────────────────────────────
 	local chainPrompt = makePrompt(world.Chain, "Break", "BREAK YOUR CHAINS", 0.35)
 	chainPrompt.Triggered:Connect(function(player)
-		if not validate(player, world.Chain) then return end
+		if not validate(player, world.Chain) then
+			return
+		end
 		local run = ctx.RunState.Get(player)
-		if not run or run.ChainsBroken then return end
+		if not run or run.ChainsBroken then
+			return
+		end
 
 		run.ChainsBroken = true
 		ctx.Analytics.Log(player, "ChainsBroken", 1)
@@ -67,7 +78,9 @@ function InteractionService.Init(context, builtWorld)
 	-- ── 2. GRAB A WEAPON ───────────────────────────────────────
 	local weaponPrompt = makePrompt(world.WeaponPlank, "Take", "GRAB A WEAPON")
 	weaponPrompt.Triggered:Connect(function(player)
-		if not validate(player, world.WeaponPlank) then return end
+		if not validate(player, world.WeaponPlank) then
+			return
+		end
 		local run = ctx.RunState.Get(player)
 		if not run or not run.ChainsBroken then
 			Notify:FireClient(player, { Text = "BREAK YOUR CHAINS FIRST", Kind = "warn" })
@@ -82,15 +95,21 @@ function InteractionService.Init(context, builtWorld)
 
 		ctx.Combat.GiveWeapon(player, "bent_spoon")
 		ctx.RunState.SetObjective(player, "STEAL THE KEY")
-		if world.SpoonProp then world.SpoonProp.Transparency = 1 end
+		if world.SpoonProp then
+			world.SpoonProp.Transparency = 1
+		end
 	end)
 
 	-- ── 3. UNLOCK THE CELLBLOCK ────────────────────────────────
 	local doorPrompt = makePrompt(world.LockedDoor, "Unlock", "LOCKED — NEEDS KEY", 0.5)
 	doorPrompt.Triggered:Connect(function(player)
-		if not validate(player, world.LockedDoor) then return end
+		if not validate(player, world.LockedDoor) then
+			return
+		end
 		local run = ctx.RunState.Get(player)
-		if not run then return end
+		if not run then
+			return
+		end
 
 		if not run.HasKey then
 			Notify:FireClient(player, { Text = "YOU NEED THE CELLBLOCK KEY", Kind = "warn" })
@@ -117,9 +136,13 @@ function InteractionService.Init(context, builtWorld)
 	-- ── 4. THE CHEST → ALARM ───────────────────────────────────
 	local chestPrompt = makePrompt(world.Chest, "Open", "CHEST", 0.6)
 	chestPrompt.Triggered:Connect(function(player)
-		if not validate(player, world.Chest) then return end
+		if not validate(player, world.Chest) then
+			return
+		end
 		local run = ctx.RunState.Get(player)
-		if not run or run.ChestOpened then return end
+		if not run or run.ChestOpened then
+			return
+		end
 		run.ChestOpened = true
 
 		ctx.Analytics.Log(player, "FirstChestOpened", 1)
@@ -159,11 +182,15 @@ end
 -- Chains are a real mechanic, not a cutscene: the player is slow until they break them.
 function InteractionService.ApplyChains(player: Player)
 	local profile = ctx.Data.Get(player)
-	if profile and profile.Meta.TutorialComplete then return end
+	if profile and profile.Meta.TutorialComplete then
+		return
+	end
 
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
+	if not humanoid then
+		return
+	end
 	humanoid.WalkSpeed = 6
 	humanoid.JumpPower = 0
 end
@@ -171,14 +198,18 @@ end
 function InteractionService.ReleaseChains(player: Player)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
+	if not humanoid then
+		return
+	end
 	humanoid.WalkSpeed = GameConfig.Player.WalkSpeed
 	humanoid.JumpPower = GameConfig.Player.JumpPower
 
 	if world and world.Chain then
 		world.Chain.Transparency = 0.6
 		task.delay(3, function()
-			if world.Chain then world.Chain.Transparency = 0 end
+			if world.Chain then
+				world.Chain.Transparency = 0
+			end
 		end)
 	end
 end

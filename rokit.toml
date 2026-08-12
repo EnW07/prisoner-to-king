@@ -3,3 +3,7 @@
 [tools]
 rojo = "rojo-rbx/rojo@7.4.4"
 stylua = "JohnnyMorganz/StyLua@0.20.0"
+# Luau toolchain, pinned for the parse check. This release bundles `luau-compile`, the binary
+# CI and the pre-commit sweep invoke as `luau-compile --binary`. (Rokit shims the primary
+# `luau` binary; `luau-compile` is used from the same pinned release.)
+luau = "luau-lang/luau@0.733"

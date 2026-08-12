@@ -23,7 +23,11 @@ local WeaponConfig: { [string]: Weapon } = {
 		WeaponClass = "Unarmed",
 		SellValue = 0,
 		Special = nil,
-		Model = { Size = Vector3.new(0.1, 0.1, 0.1), Color = Color3.fromRGB(200, 170, 140), Material = Enum.Material.SmoothPlastic },
+		Model = {
+			Size = Vector3.new(0.1, 0.1, 0.1),
+			Color = Color3.fromRGB(200, 170, 140),
+			Material = Enum.Material.SmoothPlastic,
+		},
 	},
 
 	bent_spoon = {
@@ -34,7 +38,11 @@ local WeaponConfig: { [string]: Weapon } = {
 		WeaponClass = "Dagger",
 		SellValue = 5,
 		Special = nil,
-		Model = { Size = Vector3.new(0.25, 1.6, 0.25), Color = Color3.fromRGB(160, 160, 165), Material = Enum.Material.Metal },
+		Model = {
+			Size = Vector3.new(0.25, 1.6, 0.25),
+			Color = Color3.fromRGB(160, 160, 165),
+			Material = Enum.Material.Metal,
+		},
 	},
 
 	rusty_sword = {
@@ -45,7 +53,11 @@ local WeaponConfig: { [string]: Weapon } = {
 		WeaponClass = "Sword",
 		SellValue = 30,
 		Special = nil,
-		Model = { Size = Vector3.new(0.3, 3.2, 0.3), Color = Color3.fromRGB(140, 90, 60), Material = Enum.Material.CorrodedMetal },
+		Model = {
+			Size = Vector3.new(0.3, 3.2, 0.3),
+			Color = Color3.fromRGB(140, 90, 60),
+			Material = Enum.Material.CorrodedMetal,
+		},
 	},
 }
 

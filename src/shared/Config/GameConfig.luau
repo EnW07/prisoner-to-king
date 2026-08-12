@@ -8,11 +8,11 @@ export type Config = { [string]: any }
 local GameConfig = {
 	-- ── Persistence ─────────────────────────────────────────────
 	Data = {
-		StoreName = "PTK_PlayerProfile",   -- bump only for a hard reset
+		StoreName = "PTK_PlayerProfile", -- bump only for a hard reset
 		SchemaVersion = 1,
-		AutosaveInterval = 120,            -- seconds
+		AutosaveInterval = 120, -- seconds
 		SaveRetries = 4,
-		SaveRetryBackoff = 2,              -- seconds, multiplied each retry
+		SaveRetryBackoff = 2, -- seconds, multiplied each retry
 	},
 
 	-- ── Player ──────────────────────────────────────────────────
@@ -38,7 +38,7 @@ local GameConfig = {
 
 	-- ── Run / extraction ────────────────────────────────────────
 	Run = {
-		ExtractionChannelTime = 3,      -- hold duration on the extraction pad
+		ExtractionChannelTime = 3, -- hold duration on the extraction pad
 		-- Fraction of UNSECURED gold lost on death. Equipped gear is never lost. (§14)
 		DeathUnsecuredLossPercent = 1.0,
 		AlarmGuardCount = 2,
@@ -55,7 +55,7 @@ local GameConfig = {
 
 	-- ── Enemies ─────────────────────────────────────────────────
 	Enemy = {
-		ThinkInterval = 0.2,            -- AI tick, NOT per-frame (§46)
+		ThinkInterval = 0.2, -- AI tick, NOT per-frame (§46)
 		RespawnDelay = 25,
 		CorpseDespawn = 3,
 		LeashDistance = 90,

@@ -58,13 +58,19 @@ end
 function ExtractionService.Complete(player: Player)
 	local run = ctx.RunState.Get(player)
 	local profile = ctx.Data.Get(player)
-	if not run or not profile then return end
-	if run.State == "Extracted" then return end
+	if not run or not profile then
+		return
+	end
+	if run.State == "Extracted" then
+		return
+	end
 
 	-- Re-validate position. Never bank on the word of a prompt alone.
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root then return end
+	if not root then
+		return
+	end
 	if (root.Position - world.ExtractionPad.Position).Magnitude > 16 then
 		warn(("[Extraction] %s triggered the pad from out of range — ignored."):format(player.Name))
 		return

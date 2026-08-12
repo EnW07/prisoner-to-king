@@ -54,7 +54,9 @@ local function migrate(profile)
 	-- Defensive fill for fields added without a version bump during development.
 	local base = newProfile()
 	for k, v in base do
-		if profile[k] == nil then profile[k] = v end
+		if profile[k] == nil then
+			profile[k] = v
+		end
 	end
 	return profile
 end
@@ -100,7 +102,11 @@ function PlayerDataService.Init(context)
 		for _, player in Players:GetPlayers() do
 			PlayerDataService.Save(player, true)
 		end
-		if RunService:IsStudio() then task.wait(1) else task.wait(3) end
+		if RunService:IsStudio() then
+			task.wait(1)
+		else
+			task.wait(3)
+		end
 	end)
 end
 
@@ -113,7 +119,11 @@ function PlayerDataService.Load(player: Player)
 		if ok then
 			profile = data and migrate(data) or newProfile()
 		else
-			warn("[PlayerData] Load failed for " .. player.Name .. " — using a temporary profile. Saves are disabled for this session.")
+			warn(
+				"[PlayerData] Load failed for "
+					.. player.Name
+					.. " — using a temporary profile. Saves are disabled for this session."
+			)
 			profile = newProfile()
 			profile.__noSave = true -- never overwrite real data with a fallback profile
 		end
@@ -134,14 +144,20 @@ end
 -- Mutate through this so every write is centralised and easy to log later.
 function PlayerDataService.Update(player: Player, fn: (any) -> ())
 	local profile = profiles[player.UserId]
-	if not profile then return end
+	if not profile then
+		return
+	end
 	fn(profile)
-	if ctx.Economy then ctx.Economy.PushState(player) end
+	if ctx.Economy then
+		ctx.Economy.PushState(player)
+	end
 end
 
 function PlayerDataService.Save(player: Player, immediate: boolean)
 	local profile = profiles[player.UserId]
-	if not profile or profile.__noSave or not store then return end
+	if not profile or profile.__noSave or not store then
+		return
+	end
 
 	local attempt = 0
 	local delayFor = GameConfig.Data.SaveRetryBackoff
@@ -153,15 +169,22 @@ function PlayerDataService.Save(player: Player, immediate: boolean)
 				(store :: DataStore):UpdateAsync(key(player), function(old)
 					-- Last-write-wins is acceptable for a single-session profile,
 					-- but never regress a profile that is somehow newer.
-					if type(old) == "table" and type(old.Meta) == "table"
-						and (old.Meta.LastJoinUnix or 0) > (profile.Meta.LastJoinUnix or 0) then
+					if
+						type(old) == "table"
+						and type(old.Meta) == "table"
+						and (old.Meta.LastJoinUnix or 0) > (profile.Meta.LastJoinUnix or 0)
+					then
 						return nil -- abort write
 					end
 					return profile
 				end)
 			end)
-			if ok then return true end
-			warn(("[PlayerData] Save attempt %d failed for %s: %s"):format(attempt, player.Name, tostring(err)))
+			if ok then
+				return true
+			end
+			warn(
+				("[PlayerData] Save attempt %d failed for %s: %s"):format(attempt, player.Name, tostring(err))
+			)
 			task.wait(delayFor)
 			delayFor *= 2
 		end

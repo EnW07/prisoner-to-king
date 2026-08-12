@@ -23,22 +23,32 @@ local currentCooldown = 0.65
 
 local function playSwing()
 	local character = player.Character
-	if not character then return end
+	if not character then
+		return
+	end
 	local weapon = character:FindFirstChild("EquippedWeapon")
-	if not weapon or not weapon:IsA("BasePart") then return end
+	if not weapon or not weapon:IsA("BasePart") then
+		return
+	end
 
 	-- Cheap but readable graybox swing: rotate the weld offset.
 	local original = weapon.CFrame
-	TweenService:Create(weapon, TweenInfo.new(0.08), { CFrame = original * CFrame.Angles(math.rad(-70), 0, 0) }):Play()
+	TweenService
+		:Create(weapon, TweenInfo.new(0.08), { CFrame = original * CFrame.Angles(math.rad(-70), 0, 0) })
+		:Play()
 end
 
 local function onAttack(_actionName: string, inputState: Enum.UserInputState)
-	if inputState ~= Enum.UserInputState.Begin then return end
+	if inputState ~= Enum.UserInputState.Begin then
+		return
+	end
 
 	local now = os.clock()
 	-- Local predictive cooldown only. The SERVER enforces the real one; this just avoids
 	-- spamming the remote and getting rate limited.
-	if now < localCooldownUntil then return end
+	if now < localCooldownUntil then
+		return
+	end
 	localCooldownUntil = now + currentCooldown * 0.9
 
 	playSwing()
@@ -48,9 +58,13 @@ end
 function CombatController.Init()
 	AttackRequest = Net.Event("AttackRequest")
 
-	ContextActionService:BindAction("PTK_Attack", onAttack, true,
+	ContextActionService:BindAction(
+		"PTK_Attack",
+		onAttack,
+		true,
 		Enum.UserInputType.MouseButton1,
-		Enum.KeyCode.ButtonR2)
+		Enum.KeyCode.ButtonR2
+	)
 
 	ContextActionService:SetTitle("PTK_Attack", "ATTACK")
 	ContextActionService:SetPosition("PTK_Attack", UDim2.new(1, -160, 1, -180))

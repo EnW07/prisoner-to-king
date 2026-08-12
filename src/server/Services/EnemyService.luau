@@ -28,7 +28,9 @@ function EnemyService.Init(context)
 
 	RunService.Heartbeat:Connect(function(dt)
 		accumulator += dt
-		if accumulator < GameConfig.Enemy.ThinkInterval then return end
+		if accumulator < GameConfig.Enemy.ThinkInterval then
+			return
+		end
 		local step = accumulator
 		accumulator = 0
 		for model, record in active do
@@ -145,7 +147,9 @@ end
 function EnemyService.Think(record, _dt: number)
 	local model, humanoid, cfg = record.Model, record.Humanoid, record.Config
 	local root = model.PrimaryPart
-	if not root or humanoid.Health <= 0 then return end
+	if not root or humanoid.Health <= 0 then
+		return
+	end
 
 	-- Find the closest living player inside aggro range.
 	local best, bestDist = nil, math.huge
@@ -155,7 +159,9 @@ function EnemyService.Think(record, _dt: number)
 		local pHum = char and char:FindFirstChildOfClass("Humanoid")
 		if pRoot and pHum and pHum.Health > 0 then
 			local d = (pRoot.Position - root.Position).Magnitude
-			if d < bestDist then best, bestDist = player, d end
+			if d < bestDist then
+				best, bestDist = player, d
+			end
 		end
 	end
 
@@ -178,7 +184,9 @@ function EnemyService.Think(record, _dt: number)
 		else
 			record.State = "Chase"
 			local pRoot = best.Character and best.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if pRoot then humanoid:MoveTo(pRoot.Position) end
+			if pRoot then
+				humanoid:MoveTo(pRoot.Position)
+			end
 		end
 		return
 	end
@@ -204,7 +212,9 @@ end
 function EnemyService.AttackPlayer(record, player: Player)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 then return end
+	if not hum or hum.Health <= 0 then
+		return
+	end
 	hum.Health = math.max(0, hum.Health - record.Config.Damage)
 	HitConfirm:FireClient(player, {
 		Kind = "taken",
@@ -221,10 +231,14 @@ end
 -- Called ONLY by CombatService after full server-side validation.
 function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player)
 	local record = active[model]
-	if not record or record.State == "Dead" then return false end
+	if not record or record.State == "Dead" then
+		return false
+	end
 
 	local humanoid = record.Humanoid
-	if humanoid.Health <= 0 then return false end
+	if humanoid.Health <= 0 then
+		return false
+	end
 
 	humanoid.Health = math.max(0, humanoid.Health - amount)
 
@@ -246,7 +260,9 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 end
 
 function EnemyService.Kill(record, killer: Player?)
-	if record.State == "Dead" then return end
+	if record.State == "Dead" then
+		return
+	end
 	record.State = "Dead"
 
 	local root = record.Model.PrimaryPart :: BasePart
@@ -274,7 +290,9 @@ function EnemyService.Kill(record, killer: Player?)
 	active[model] = nil
 
 	task.delay(GameConfig.Enemy.CorpseDespawn, function()
-		if model.Parent then model:Destroy() end
+		if model.Parent then
+			model:Destroy()
+		end
 	end)
 
 	if record.Respawn then

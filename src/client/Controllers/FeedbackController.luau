@@ -21,7 +21,7 @@ local camera = workspace.CurrentCamera
 local FeedbackController = {}
 
 local SOUND_IDS = {
-	hit = "",        -- e.g. "rbxassetid://0000000000"
+	hit = "", -- e.g. "rbxassetid://0000000000"
 	takeDamage = "",
 	kill = "",
 	loot = "",
@@ -32,7 +32,9 @@ local SOUND_IDS = {
 
 local function playSound(name: string, volume: number?)
 	local id = SOUND_IDS[name]
-	if not id or id == "" then return end
+	if not id or id == "" then
+		return
+	end
 	local s = Instance.new("Sound")
 	s.SoundId = id
 	s.Volume = volume or 0.6
@@ -86,11 +88,12 @@ local function cameraKick(strength: number)
 			return
 		end
 		local decay = (1 - alpha) * strength
-		camera.CFrame = camera.CFrame * CFrame.Angles(
-			math.rad((math.random() - 0.5) * decay),
-			math.rad((math.random() - 0.5) * decay),
-			0
-		)
+		camera.CFrame = camera.CFrame
+			* CFrame.Angles(
+				math.rad((math.random() - 0.5) * decay),
+				math.rad((math.random() - 0.5) * decay),
+				0
+			)
 	end)
 end
 

@@ -41,24 +41,34 @@ end
 
 function CombatService.HandleAttack(player: Player)
 	-- 1. Rate limit before doing any work.
-	if not RateLimiter.Check(player, "Attack", GameConfig.Combat.MaxAttackRate) then return end
+	if not RateLimiter.Check(player, "Attack", GameConfig.Combat.MaxAttackRate) then
+		return
+	end
 
 	-- 2. Alive check.
 	local character = player.Character
-	if not character then return end
+	if not character then
+		return
+	end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not humanoid or not root or humanoid.Health <= 0 then return end
+	if not humanoid or not root or humanoid.Health <= 0 then
+		return
+	end
 
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 
 	-- 3. Cooldown, enforced from the equipped weapon's config — not from anything sent.
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId) or WeaponConfig.Get("fists")
 	local cooldown = (weapon :: any).AttackCooldown
 	local now = os.clock()
 	local last = lastAttack[player.UserId] or 0
-	if now - last < (cooldown - GameConfig.Combat.CooldownGrace) then return end
+	if now - last < (cooldown - GameConfig.Combat.CooldownGrace) then
+		return
+	end
 	lastAttack[player.UserId] = now
 
 	-- 4. Server-side hit detection, from the server's position for this character.
@@ -78,7 +88,9 @@ function CombatService.HandleAttack(player: Player)
 	local hits = 0
 
 	for _, hitPart in parts do
-		if hits >= GameConfig.Combat.MaxTargetsPerSwing then break end
+		if hits >= GameConfig.Combat.MaxTargetsPerSwing then
+			break
+		end
 		local model = hitPart:FindFirstAncestorOfClass("Model")
 		if model and not hitModels[model] and model:GetAttribute("EnemyId") then
 			hitModels[model] = true
@@ -95,10 +107,14 @@ end
 -- ── Weapons ─────────────────────────────────────────────────────
 function CombatService.GiveWeapon(player: Player, weaponId: string)
 	local weapon = WeaponConfig.Get(weaponId)
-	if not weapon then return end
+	if not weapon then
+		return
+	end
 
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 
 	if not table.find(profile.Inventory.Weapons, weaponId) then
 		table.insert(profile.Inventory.Weapons, weaponId)
@@ -127,23 +143,33 @@ end
 -- Welds a graybox weapon part to the character's hand. Handles both R6 and R15.
 function CombatService.EquipVisual(player: Player)
 	local character = player.Character
-	if not character then return end
+	if not character then
+		return
+	end
 
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 
 	local existing = character:FindFirstChild("EquippedWeapon")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId)
-	if not weapon or profile.Equipped.WeaponId == "fists" then return end
+	if not weapon or profile.Equipped.WeaponId == "fists" then
+		return
+	end
 
 	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
 	if not hand then
 		-- Character parts can lag a frame behind CharacterAdded. Retry once, briefly.
 		hand = character:WaitForChild("RightHand", 3) or character:WaitForChild("Right Arm", 1)
 	end
-	if not hand or not hand:IsA("BasePart") then return end
+	if not hand or not hand:IsA("BasePart") then
+		return
+	end
 
 	local p = Instance.new("Part")
 	p.Name = "EquippedWeapon"

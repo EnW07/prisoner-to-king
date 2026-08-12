@@ -21,9 +21,13 @@ function EconomyService.GetGold(player: Player): number
 end
 
 function EconomyService.AddGold(player: Player, amount: number, reason: string)
-	if amount <= 0 then return end
+	if amount <= 0 then
+		return
+	end
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 	profile.Currencies.Gold += math.floor(amount)
 	ctx.Analytics.Log(player, "GoldEarned", amount, { reason = reason })
 	EconomyService.PushState(player)
@@ -32,8 +36,12 @@ end
 -- Returns false if the player cannot afford it. Callers MUST check the return value.
 function EconomyService.TrySpendGold(player: Player, amount: number, reason: string): boolean
 	local profile = ctx.Data.Get(player)
-	if not profile then return false end
-	if profile.Currencies.Gold < amount then return false end
+	if not profile then
+		return false
+	end
+	if profile.Currencies.Gold < amount then
+		return false
+	end
 	profile.Currencies.Gold -= math.floor(amount)
 	ctx.Analytics.Log(player, "GoldSpent", amount, { reason = reason })
 	EconomyService.PushState(player)
@@ -43,15 +51,20 @@ end
 -- Total damage of the equipped weapon including permanent Training/Armory upgrades.
 function EconomyService.GetPlayerDamage(player: Player): number
 	local profile = ctx.Data.Get(player)
-	if not profile then return 5 end
+	if not profile then
+		return 5
+	end
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId) or WeaponConfig.Get("fists")
-	local bonus = (profile.Castle.WeaponRackLevel or 0) * require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponRackDamageBonus
+	local bonus = (profile.Castle.WeaponRackLevel or 0)
+		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponRackDamageBonus
 	return (weapon :: any).Damage + bonus
 end
 
 function EconomyService.PushState(player: Player)
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 	local run = ctx.RunState and ctx.RunState.Get(player)
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId)
 

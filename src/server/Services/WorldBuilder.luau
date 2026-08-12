@@ -20,7 +20,14 @@ local Lighting = game:GetService("Lighting")
 
 local WorldBuilder = {}
 
-local function part(name: string, cf: CFrame, size: Vector3, color: Color3, parent: Instance, material: Enum.Material?): Part
+local function part(
+	name: string,
+	cf: CFrame,
+	size: Vector3,
+	color: Color3,
+	parent: Instance,
+	material: Enum.Material?
+): Part
 	local p = Instance.new("Part")
 	p.Name = name
 	p.Anchored = true
@@ -35,7 +42,18 @@ local function part(name: string, cf: CFrame, size: Vector3, color: Color3, pare
 	return p
 end
 
-local function box(name: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, color: Color3, parent: Instance, material: Enum.Material?): Part
+local function box(
+	name: string,
+	x: number,
+	y: number,
+	z: number,
+	sx: number,
+	sy: number,
+	sz: number,
+	color: Color3,
+	parent: Instance,
+	material: Enum.Material?
+): Part
 	return part(name, CFrame.new(x, y, z), Vector3.new(sx, sy, sz), color, parent, material)
 end
 
@@ -62,15 +80,23 @@ function WorldBuilder.Build()
 	end
 
 	local existing = workspace:FindFirstChild("World")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 
 	local world = Instance.new("Folder")
 	world.Name = "World"
 	world.Parent = workspace
 
-	local zones = Instance.new("Folder"); zones.Name = "Zones"; zones.Parent = world
-	local interact = Instance.new("Folder"); interact.Name = "Interactables"; interact.Parent = world
-	local props = Instance.new("Folder"); props.Name = "Props"; props.Parent = world
+	local zones = Instance.new("Folder")
+	zones.Name = "Zones"
+	zones.Parent = world
+	local interact = Instance.new("Folder")
+	interact.Name = "Interactables"
+	interact.Parent = world
+	local props = Instance.new("Folder")
+	props.Name = "Props"
+	props.Parent = world
 
 	-- ── Lighting: dungeon dusk, torch-lit ──────────────────────
 	Lighting.ClockTime = 17.2
@@ -104,18 +130,41 @@ function WorldBuilder.Build()
 	spawnPad.Parent = zones
 
 	-- The chain the player breaks. (§8, 0:05–0:20)
-	local chain = box("Chain", -19, 2.5, 0, 0.5, 5, 0.5, Color3.fromRGB(85, 85, 90), interact, Enum.Material.Metal)
+	local chain =
+		box("Chain", -19, 2.5, 0, 0.5, 5, 0.5, Color3.fromRGB(85, 85, 90), interact, Enum.Material.Metal)
 	chain.CanCollide = false
 
 	-- First weapon, on a plank near the wall.
 	local plank = box("WeaponPlank", -10, 1, 6.6, 3, 0.4, 1, WOOD, interact, Enum.Material.Wood)
-	local spoon = box("SpoonProp", -10, 1.4, 6.6, 0.25, 1.4, 0.25, Color3.fromRGB(170, 170, 175), props, Enum.Material.Metal)
+	local spoon = box(
+		"SpoonProp",
+		-10,
+		1.4,
+		6.6,
+		0.25,
+		1.4,
+		0.25,
+		Color3.fromRGB(170, 170, 175),
+		props,
+		Enum.Material.Metal
+	)
 	spoon.CanCollide = false
 	spoon.Orientation = Vector3.new(0, 0, 90)
 
 	-- Distant castle silhouette, visible past the cell. Pure motivation prop. (§8, 0:00–0:05)
 	for i = 1, 5 do
-		local t = box("DistantTower", -260 - i * 22, 40 + (i % 3) * 14, -40 + i * 30, 26, 90 + (i % 3) * 30, 26, Color3.fromRGB(48, 50, 62), props, Enum.Material.Concrete)
+		local t = box(
+			"DistantTower",
+			-260 - i * 22,
+			40 + (i % 3) * 14,
+			-40 + i * 30,
+			26,
+			90 + (i % 3) * 30,
+			26,
+			Color3.fromRGB(48, 50, 62),
+			props,
+			Enum.Material.Concrete
+		)
 		t.CanCollide = false
 	end
 
@@ -144,7 +193,8 @@ function WorldBuilder.Build()
 	torch(99.5, 7, 8, props)
 	torch(99.5, 7, -8, props)
 
-	local chest = box("Chest", 80.5, 1.5, 8, 4, 3, 3, Color3.fromRGB(120, 85, 50), interact, Enum.Material.WoodPlanks)
+	local chest =
+		box("Chest", 80.5, 1.5, 8, 4, 3, 3, Color3.fromRGB(120, 85, 50), interact, Enum.Material.WoodPlanks)
 
 	-- ══ SEWER TUNNEL → EXTRACTION ══════════════════════════════
 	box("SewerFloor", 93, -0.5, -33, 6, 1, 37, Color3.fromRGB(60, 62, 55), zones, Enum.Material.Concrete)
@@ -153,7 +203,18 @@ function WorldBuilder.Build()
 	torch(90.2, 5, -25, props)
 	torch(90.2, 5, -40, props)
 
-	local extraction = box("ExtractionPad", 93, 0.3, -47, 6, 0.6, 6, Color3.fromRGB(70, 200, 110), interact, Enum.Material.Neon)
+	local extraction = box(
+		"ExtractionPad",
+		93,
+		0.3,
+		-47,
+		6,
+		0.6,
+		6,
+		Color3.fromRGB(70, 200, 110),
+		interact,
+		Enum.Material.Neon
+	)
 
 	-- ══ HIDEOUT (safe zone) ════════════════════════════════════
 	box("HideoutFloor", 0, -0.5, 400, 40, 1, 40, Color3.fromRGB(95, 80, 65), zones, Enum.Material.WoodPlanks)
@@ -164,8 +225,10 @@ function WorldBuilder.Build()
 	torch(-19, 5, 390, props)
 	torch(19, 5, 410, props)
 
-	local upgradePad = box("UpgradePad", -8, 0.3, 392, 6, 0.6, 6, Color3.fromRGB(255, 190, 70), interact, Enum.Material.Neon)
-	local reenterPad = box("ReenterPad", 8, 0.3, 392, 6, 0.6, 6, Color3.fromRGB(220, 80, 80), interact, Enum.Material.Neon)
+	local upgradePad =
+		box("UpgradePad", -8, 0.3, 392, 6, 0.6, 6, Color3.fromRGB(255, 190, 70), interact, Enum.Material.Neon)
+	local reenterPad =
+		box("ReenterPad", 8, 0.3, 392, 6, 0.6, 6, Color3.fromRGB(220, 80, 80), interact, Enum.Material.Neon)
 
 	-- The armory rack visibly grows with each upgrade (§16: upgrades change the 3D space).
 	local rack = box("WeaponRack", -8, 2, 388, 6, 4, 1, WOOD, props, Enum.Material.WoodPlanks)

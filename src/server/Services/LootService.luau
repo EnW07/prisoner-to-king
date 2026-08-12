@@ -37,7 +37,9 @@ end
 -- kind: "Gold" | "Key" | "Weapon"
 function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerUserId: number?)
 	local visual = LootConfig.Pickups[kind]
-	if not visual then return end
+	if not visual then
+		return
+	end
 
 	local id = newId()
 
@@ -85,7 +87,9 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 
 	p.Touched:Connect(function(hit)
 		local character = hit.Parent
-		if not character then return end
+		if not character then
+			return
+		end
 		local player = Players:GetPlayerFromCharacter(character)
 		if player then
 			LootService.TryPickup(player, id)
@@ -104,21 +108,31 @@ end
 
 function LootService.TryPickup(player: Player, id: string)
 	local record = drops[id]
-	if not record then return end
+	if not record then
+		return
+	end
 
 	-- ATOMIC CLAIM. Flip the flag before granting anything. Luau is single-threaded per
 	-- script, and there is no yield between the check and the write, so two Touched
 	-- callbacks cannot both pass this gate.
-	if record.Claimed then return end
+	if record.Claimed then
+		return
+	end
 
-	if record.OwnerUserId and record.OwnerUserId ~= player.UserId then return end
+	if record.OwnerUserId and record.OwnerUserId ~= player.UserId then
+		return
+	end
 
 	-- Distance re-validation: never trust that a Touched event means the player is actually there.
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
+	if not root then
+		return
+	end
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return end
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
 	if (root.Position - record.Instance.Position).Magnitude > LootConfig.Pickups.PickupRadius then
 		return
 	end
@@ -144,12 +158,16 @@ end
 -- Weighted roll. Randomisation lives HERE, on the server, never in a config or on a client.
 function LootService.RollTable(tableName: string): { any }
 	local def = LootConfig.Tables[tableName]
-	if not def then return {} end
+	if not def then
+		return {}
+	end
 
 	local results = {}
 	for _ = 1, def.Rolls do
 		local total = 0
-		for _, entry in def.Entries do total += entry.Weight end
+		for _, entry in def.Entries do
+			total += entry.Weight
+		end
 		local roll = math.random() * total
 		local acc = 0
 		for _, entry in def.Entries do
@@ -169,7 +187,9 @@ end
 function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Player?)
 	local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 	local cfg = EnemyConfig.Get(enemyId)
-	if not cfg then return end
+	if not cfg then
+		return
+	end
 
 	-- Guaranteed base gold so a kill is never a total blank (§13 / §67 fail-soft).
 	local gold = math.random(cfg.GoldMin, cfg.GoldMax)

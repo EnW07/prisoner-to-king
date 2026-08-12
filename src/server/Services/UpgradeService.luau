@@ -32,8 +32,12 @@ function UpgradeService.Init(context, builtWorld)
 	world = builtWorld
 	Notify = Net.Event("Notify")
 
-	upgradePrompt = makePrompt(world.UpgradePad, "Upgrade",
-		("UPGRADE ARMORY — %d Gold"):format(GameConfig.Economy.WeaponRackCost), 0.4)
+	upgradePrompt = makePrompt(
+		world.UpgradePad,
+		"Upgrade",
+		("UPGRADE ARMORY — %d Gold"):format(GameConfig.Economy.WeaponRackCost),
+		0.4
+	)
 
 	reenterPrompt = makePrompt(world.ReenterPad, "Enter", "BREAK INTO THE CASTLE AGAIN", 0.4)
 
@@ -48,7 +52,9 @@ end
 
 function UpgradeService.BuyWeaponRack(player: Player)
 	local profile = ctx.Data.Get(player)
-	if not profile then return end
+	if not profile then
+		return
+	end
 
 	local level = profile.Castle.WeaponRackLevel or 0
 	if level >= GameConfig.Economy.WeaponRackMaxLevel then
@@ -93,7 +99,9 @@ end
 function UpgradeService.ReenterDungeon(player: Player)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root then return end
+	if not root then
+		return
+	end
 
 	root.CFrame = world.CellSpawnCFrame
 	ctx.RunState.StartRun(player)

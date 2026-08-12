@@ -13,10 +13,10 @@ local EVENTS = {
 	"AttackRequest",
 
 	-- Server → Client
-	"StateUpdate",   -- gold, unsecured, weapon, objective, run state
-	"Notify",        -- toast / banner messages
-	"HitConfirm",    -- feedback: position, damage, killed
-	"ScreenEvent",   -- ESCAPED / CAPTURED full-screen moments
+	"StateUpdate", -- gold, unsecured, weapon, objective, run state
+	"Notify", -- toast / banner messages
+	"HitConfirm", -- feedback: position, damage, killed
+	"ScreenEvent", -- ESCAPED / CAPTURED full-screen moments
 }
 
 local Net = {}

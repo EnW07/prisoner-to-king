@@ -26,7 +26,8 @@ function RateLimiter.Check(player: Player, action: string, ratePerSecond: number
 	local bucket = perPlayer[action]
 	local now = os.clock()
 	if not bucket then
-		bucket = { Tokens = ratePerSecond, Last = now, Rate = ratePerSecond, Max = ratePerSecond, Violations = 0 }
+		bucket =
+			{ Tokens = ratePerSecond, Last = now, Rate = ratePerSecond, Max = ratePerSecond, Violations = 0 }
 		perPlayer[action] = bucket
 	end
 
