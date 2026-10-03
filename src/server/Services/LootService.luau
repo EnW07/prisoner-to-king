@@ -3,11 +3,14 @@
 -- Blueprint §47. Every drop gets a server-generated ID and is claimed ATOMICALLY.
 --
 -- SECURITY: the client never tells the server what it picked up or how much it is worth.
--- Pickup is driven by a server-side Touched check plus a distance re-validation, and the
--- claim flag is flipped before any reward is granted, so two touches cannot both pay out.
+-- Pickup is driven server-side, by a proximity sweep plus Touched, with a distance
+-- re-validation. The claim flag is flipped before any reward is granted, so two triggers
+-- cannot both pay out.
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local LootConfig = require(game.ReplicatedStorage.Shared.Config.LootConfig)
 local WeaponConfig = require(game.ReplicatedStorage.Shared.Config.WeaponConfig)
@@ -27,11 +30,57 @@ function LootService.Init(context)
 	container = Instance.new("Folder")
 	container.Name = "LootDrops"
 	container.Parent = workspace
+
+	-- Server-side proximity sweep. This is the primary pickup path now that drops are
+	-- anchored: Touched on an anchored, non-collidable part depends on which character
+	-- part grazes it (an accessory's parent isn't the character), so it can miss. Touched
+	-- stays connected for instant pickup; this sweep guarantees it. TryPickup re-validates
+	-- everything either way.
+	local accumulator = 0
+	RunService.Heartbeat:Connect(function(dt)
+		accumulator += dt
+		if accumulator < LootConfig.Pickups.SweepInterval then
+			return
+		end
+		accumulator = 0
+		LootService.Sweep()
+	end)
 end
 
 local function newId(): string
 	nextId += 1
 	return ("loot_%d_%d"):format(os.time(), nextId)
+end
+
+-- Where a drop comes to rest. P0 fix (playtest 3): loot used to be an unanchored,
+-- CanCollide = false part flung with a velocity, so nothing stopped it falling through
+-- the floor. Now the landing point is raycast against the level geometry and the part
+-- stays anchored. It can't fall, roll away, or be knocked into a wall.
+local function landingPoint(origin: Vector3, size: Vector3): Vector3
+	local cfg = LootConfig.Pickups
+	local world = ctx.World and ctx.World.Folder
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = if world
+		then { world:FindFirstChild("Zones"), world:FindFirstChild("Interactables") }
+		else {}
+
+	-- Scatter sideways, but stop short of any wall or door between the drop and the target.
+	local angle = math.random() * 2 * math.pi
+	local scatter = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (math.random() * cfg.ScatterRadius)
+	local wall = workspace:Raycast(origin, scatter, params)
+	if wall then
+		scatter = scatter.Unit * math.max(0, wall.Distance - size.Magnitude)
+	end
+
+	local probe = Vector3.new(0, -cfg.FloorProbeDepth, 0)
+	local floor = workspace:Raycast(origin + scatter, probe, params)
+		or workspace:Raycast(origin, probe, params)
+	if not floor then
+		warn(("[Loot] No floor under drop at %s; resting at the drop point."):format(tostring(origin)))
+	end
+	local base = if floor then floor.Position else origin
+	return base + Vector3.new(0, size.Y / 2 + cfg.Hover, 0)
 end
 
 -- kind: "Gold" | "Key" | "Weapon"
@@ -48,16 +97,30 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	p.Size = visual.Size
 	p.Color = visual.Color
 	p.Material = Enum.Material.Neon
+	p.Anchored = true
 	p.CanCollide = false
-	p.CFrame = CFrame.new(position + Vector3.new(0, 2, 0))
+	p.CFrame = CFrame.new(position)
 	p.Parent = container
 
-	-- Loot physically bursts out and is visible (§8).
-	p.AssemblyLinearVelocity = Vector3.new(
-		(math.random() - 0.5) * LootConfig.Pickups.BurstForce,
-		LootConfig.Pickups.BurstForce * 0.7,
-		(math.random() - 0.5) * LootConfig.Pickups.BurstForce
+	-- Loot still bursts out visibly (§8), as a tweened hop onto the floor rather than physics.
+	local cfg = LootConfig.Pickups
+	local landing = landingPoint(position, visual.Size)
+	local apex = position:Lerp(landing, 0.5) + Vector3.new(0, cfg.HopHeight, 0)
+	local rise = TweenService:Create(
+		p,
+		TweenInfo.new(cfg.HopTime / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = CFrame.new(apex) }
 	)
+	rise.Completed:Connect(function()
+		if p.Parent then
+			TweenService:Create(
+				p,
+				TweenInfo.new(cfg.HopTime / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ CFrame = CFrame.new(landing) }
+			):Play()
+		end
+	end)
+	rise:Play()
 
 	local label = Instance.new("BillboardGui")
 	label.Size = UDim2.fromOffset(140, 34)
@@ -82,6 +145,7 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 		Claimed = false,
 		OwnerUserId = ownerUserId, -- nil = public
 		SpawnTime = os.clock(),
+		SafePosition = landing, -- where the sweep puts it back if it ever ends up below the map
 	}
 	drops[id] = record
 
@@ -104,6 +168,38 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	end)
 
 	return id
+end
+
+-- Proximity pickup plus a below-the-map safety net. Runs every Pickups.SweepInterval.
+function LootService.Sweep()
+	local cfg = LootConfig.Pickups
+	-- Snapshot first: a pickup can yield (equipping a weapon waits for the hand), and new
+	-- drops may be added meanwhile. Never mutate a table while iterating it across a yield.
+	local snapshot = {}
+	for id, record in drops do
+		table.insert(snapshot, { id, record })
+	end
+	for _, entry in snapshot do
+		local id, record = entry[1], entry[2]
+		if not drops[id] then
+			continue
+		end
+		local part = record.Instance
+		if part.Position.Y < cfg.MinSafeY then
+			warn(("[Loot] %s fell below the map; restoring it."):format(id))
+			part.CFrame = CFrame.new(record.SafePosition)
+		end
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root and (root.Position - part.Position).Magnitude <= cfg.PickupRadius then
+				LootService.TryPickup(player, id)
+				if not drops[id] then
+					break
+				end
+			end
+		end
+	end
 end
 
 function LootService.TryPickup(player: Player, id: string)

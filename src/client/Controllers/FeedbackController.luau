@@ -14,6 +14,8 @@ local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
+local Palette = require(Shared:WaitForChild("Config"):WaitForChild("Palette"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -63,10 +65,17 @@ local function damageNumber(position: Vector3, amount: number, color: Color3)
 	text.BackgroundTransparency = 1
 	text.Text = tostring(math.floor(amount))
 	text.TextColor3 = color
-	text.TextStrokeTransparency = 0.2
-	text.Font = Enum.Font.GothamBlack
+	text.TextStrokeColor3 = Palette.pitch
+	text.TextStrokeTransparency = 0
+	text.Font = UIStyle.FONT
 	text.TextScaled = true
 	text.Parent = billboard
+
+	-- Numbers punch (art §5): land big, settle.
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1.6
+	scale.Parent = text
+	TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
 	TweenService:Create(anchor, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		CFrame = anchor.CFrame * CFrame.new(0, 4, 0),
@@ -102,12 +111,12 @@ function FeedbackController.Init()
 		if data.Kind == "dealt" then
 			-- Only show numbers for hits this player caused, to keep the screen readable.
 			if data.Attacker == player.UserId then
-				damageNumber(data.Position, data.Damage, Color3.fromRGB(255, 240, 190))
+				damageNumber(data.Position, data.Damage, UIStyle.TEXT)
 				cameraKick(0.7)
 				playSound(if data.Killed then "kill" else "hit")
 			end
 		elseif data.Kind == "taken" then
-			damageNumber(data.Position, data.Damage, Color3.fromRGB(255, 110, 110))
+			damageNumber(data.Position, data.Damage, Palette.bleed) -- taken = danger
 			cameraKick(1.4)
 			playSound("takeDamage")
 		end

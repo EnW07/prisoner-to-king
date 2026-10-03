@@ -39,7 +39,7 @@ end
 
 function PromptController.OnState(state)
 	local safe = (state.RunState or "Safe") == "Safe"
-	local maxed = (state.WeaponRackLevel or 0) >= GameConfig.Economy.WeaponRackMaxLevel
+	local maxed = (state.WeaponUpgradeLevel or 0) >= GameConfig.Economy.WeaponUpgradeMaxLevel
 
 	for _, prompt in gatherPrompts() do
 		local gate = prompt:GetAttribute("PTKGate")
@@ -70,10 +70,10 @@ function PromptController.OnState(state)
 		elseif gate == "upgrade" then
 			-- The one prompt whose LABEL is also per-player: it shows the live next-level cost.
 			if maxed then
-				prompt.ObjectText = "ARMORY FULLY UPGRADED"
+				prompt.ObjectText = "WEAPONS FULLY UPGRADED"
 				prompt.Enabled = false
 			else
-				prompt.ObjectText = ("UPGRADE ARMORY — %d Gold"):format(state.UpgradeCost or 0)
+				prompt.ObjectText = ("UPGRADE YOUR WEAPONS — %d Gold"):format(state.UpgradeCost or 0)
 				prompt.Enabled = safe
 			end
 		end

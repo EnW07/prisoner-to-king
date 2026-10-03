@@ -79,7 +79,7 @@ local EnemyConfig: { [string]: Enemy } = {
 	-- M2 miniboss (blueprint §12 "Captain", §18 template, §111 stats). Waits in his hall off
 	-- the vault: visible from the cellblock door on run 1, but he only fights players who
 	-- step into his hall. Losing to him on run 1 is intended. Tuned so a Rusty Sword player
-	-- very likely loses, and Guard Sword + one armory level is a fair fight.
+	-- very likely loses, and Guard Sword + one weapon upgrade is a fair fight.
 	captain_bronn = {
 		DisplayName = "Captain Bronn",
 		MaxHealth = 300,

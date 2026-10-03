@@ -112,7 +112,7 @@ function ExtractionService.Complete(player: Player)
 	end
 
 	ctx.RunState.SetState(player, "Safe")
-	ctx.RunState.SetObjective(player, "UPGRADE YOUR ARMORY")
+	ctx.RunState.SetObjective(player, "UPGRADE YOUR WEAPONS")
 	ctx.Data.Save(player, false)
 	ctx.Economy.PushState(player)
 end

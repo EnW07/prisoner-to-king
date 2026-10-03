@@ -69,6 +69,19 @@ type Fight = {
 -- instancing. Accepted for M2 (decision 2026-10-03). Don't build it piecemeal here.
 local fight: Fight? = nil
 
+-- Guards Bronn has called. Module-level, not per-Fight, so a guard that outlives the Bronn
+-- who called it is still found and removed when the next Bronn spawns.
+local reinforcements: { any } = {}
+
+-- Despawn every living reinforcement. Called on reset, before calling a new one, and when
+-- a fresh Bronn spawns, so they can never accumulate across engagements. (Playtest 3, P2.)
+local function dismissReinforcements()
+	for _, guard in reinforcements do
+		ctx.EnemyService.Despawn(guard)
+	end
+	table.clear(reinforcements)
+end
+
 -- ── Helpers ─────────────────────────────────────────────────────
 local function livingRoot(player: Player): BasePart?
 	local char = player.Character
@@ -480,6 +493,7 @@ end
 -- No one left in the hall long enough: walk home and heal fully. Stops the step-in,
 -- hit, step-out pattern from whittling him down for free.
 local function reset(f: Fight)
+	dismissReinforcements()
 	f.InFight = false
 	f.Reinforced = false
 	f.RotationIndex = 1
@@ -583,7 +597,15 @@ local function onDamaged(record, attacker: Player)
 	local hum: Humanoid = record.Humanoid
 	if not f.Reinforced and hum.Health > 0 and hum.Health <= hum.MaxHealth * TUNE.ReinforcementAtHealth then
 		f.Reinforced = true
-		ctx.EnemyService.Spawn(TUNE.ReinforcementEnemy, world.CaptainReinforcementSpawn, { Respawn = false })
+		dismissReinforcements()
+		local guard = ctx.EnemyService.Spawn(
+			TUNE.ReinforcementEnemy,
+			world.CaptainReinforcementSpawn,
+			{ Respawn = false }
+		)
+		if guard then
+			table.insert(reinforcements, guard)
+		end
 		notifyEngaged(f, { Text = "BRONN CALLS A GUARD!", Kind = "alarm" })
 	end
 end
@@ -637,6 +659,8 @@ function CaptainService.Spawn()
 	if fight then
 		return
 	end
+	-- A guard from Bronn's previous life must not carry into this one.
+	dismissReinforcements()
 	local record = ctx.EnemyService.Spawn(ENEMY_ID, world.CaptainSpawn, {
 		Respawn = false, -- respawned here, on GameConfig.Captain.RespawnDelay
 		SpawnCFrame = world.CaptainSpawn,
