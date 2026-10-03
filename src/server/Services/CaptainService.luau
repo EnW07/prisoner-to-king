@@ -61,6 +61,12 @@ type Fight = {
 	Markers: { BasePart },
 }
 
+-- TODO(per-player instancing): Bronn is ONE shared, replicated enemy. If any player kills
+-- him he is gone for everyone until GameConfig.Captain.RespawnDelay elapses, even for a
+-- player whose run has only just started. It's the same replicated-state limitation as
+-- the ProximityPrompts and the cellblock door (M1 bugs 1/2/5): world state is global, but
+-- objectives are per-player. The eventual fix is per-player (or per-party) dungeon
+-- instancing. Accepted for M2 (decision 2026-10-03). Don't build it piecemeal here.
 local fight: Fight? = nil
 
 -- ── Helpers ─────────────────────────────────────────────────────
