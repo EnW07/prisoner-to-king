@@ -18,6 +18,7 @@ local EVENTS = {
 	"Notify", -- toast / banner messages
 	"HitConfirm", -- feedback: position, damage, killed
 	"ScreenEvent", -- ESCAPED / CAPTURED full-screen moments
+	"CombatVisual", -- another player's validated swing, so every client can play it
 }
 
 local Net = {}

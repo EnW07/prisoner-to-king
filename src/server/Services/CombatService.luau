@@ -23,13 +23,18 @@ local CombatService = {}
 local ctx
 local AttackRequest: RemoteEvent
 local Notify: RemoteEvent
+local CombatVisual: RemoteEvent
 
 local lastAttack: { [number]: number } = {}
+-- Light combo stage per player, from the same rule the client predicts with
+-- (GameConfig.Animation.ComboWindow). The server's count is the one that matters (E3).
+local comboStage: { [number]: number } = {}
 
 function CombatService.Init(context)
 	ctx = context
 	AttackRequest = Net.Event("AttackRequest")
 	Notify = Net.Event("Notify")
+	CombatVisual = Net.Event("CombatVisual")
 
 	AttackRequest.OnServerEvent:Connect(function(player)
 		CombatService.HandleAttack(player)
@@ -37,6 +42,7 @@ function CombatService.Init(context)
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastAttack[player.UserId] = nil
+		comboStage[player.UserId] = nil
 	end)
 end
 
@@ -71,6 +77,21 @@ function CombatService.HandleAttack(player: Player)
 		return
 	end
 	lastAttack[player.UserId] = now
+
+	local stage = if now - last <= GameConfig.Animation.ComboWindow
+		then (comboStage[player.UserId] or 0) % 3 + 1
+		else 1
+	comboStage[player.UserId] = stage
+
+	-- A client's joint changes never replicate, so other players would see a frozen
+	-- attacker. Rebroadcast the validated swing; each other client plays the same move
+	-- on this character locally. The attacker already played its own on input.
+	local visual = { UserId = player.UserId, Key = "Light" .. stage, Weight = (weapon :: any).Weight }
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			CombatVisual:FireClient(other, visual)
+		end
+	end
 
 	-- 4. Server-side hit detection, from the server's position for this character.
 	local range = GameConfig.Combat.Range
@@ -196,7 +217,7 @@ function CombatService.EquipVisual(player: Player)
 	model.Parent = character
 
 	-- A Weld named "Grip" holds the weapon in the hand. The swing moves the ARM
-	-- (CombatController via ArmPose); the grip itself never animates.
+	-- (PlayerAnimController through the pose system); the grip itself never animates.
 	local grip = Instance.new("Weld")
 	grip.Name = "Grip"
 	grip.Part0 = hand
