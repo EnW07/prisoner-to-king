@@ -50,9 +50,11 @@ local GameConfig = {
 	Economy = {
 		FirstEscapeBonus = 100,
 		ChestGold = 50,
-		WeaponRackCost = 120,
-		WeaponRackDamageBonus = 5,
-		WeaponRackMaxLevel = 3,
+		-- "UPGRADE YOUR WEAPONS": a permanent flat damage bonus on every weapon you hold.
+		-- (Was WeaponRack*. "Armory" read as armour/defence in playtest 3.)
+		WeaponUpgradeCost = 120,
+		WeaponUpgradeDamageBonus = 5,
+		WeaponUpgradeMaxLevel = 3,
 	},
 
 	-- ── Enemies ─────────────────────────────────────────────────

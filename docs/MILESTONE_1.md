@@ -2,7 +2,7 @@
 
 Implements §104 of the blueprint and nothing beyond it.
 
-**The loop:** spawn in chains → break chains → grab a weapon → kill a guard → the guard drops the key + gold → unlock the cellblock → open the chest (guaranteed Rusty Sword) → alarm → run the sewer → extract → gold banks → upgrade the armory → re-enter.
+**The loop:** spawn in chains → break chains → grab a weapon → kill a guard → the guard drops the key + gold → unlock the cellblock → open the chest (guaranteed Rusty Sword) → alarm → run the sewer → extract → gold banks → upgrade your weapons → re-enter.
 
 Target completion time for a first-time tester: **2–4 minutes.**
 
@@ -87,7 +87,7 @@ Everything tunable lives in `ReplicatedStorage/Shared/Config`. The values most w
 |---|---|---:|---|
 | `GameConfig.Run` | `ExtractionChannelTime` | 3 | Longer = more tension, more rage. A/B this (§55 Test 3). |
 | `GameConfig.Run` | `DeathUnsecuredLossPercent` | 1.0 | The single most retention-sensitive number in the game. |
-| `GameConfig.Economy` | `WeaponRackCost` | 120 | First upgrade must be affordable off one run (§25). |
+| `GameConfig.Economy` | `WeaponUpgradeCost` | 120 | First upgrade must be affordable off one run (§25). |
 | `GameConfig.Economy` | `FirstEscapeBonus` | 100 | Makes the first extraction feel like a payoff. |
 | `EnemyConfig.sleepy_guard` | `MaxHealth` | 30 | Tuned for 4–5 Bent Spoon hits (§8). |
 | `GameConfig.Combat` | `Range` / `Width` | 8 / 6 | Widen if mobile players report whiffing. |
@@ -145,7 +145,7 @@ Run in Studio (Play, then Play with 2 players for the multiplayer rows).
 - [ ] Extraction requires a 3-second hold and cannot be triggered from across the room
 - [ ] "ESCAPED!" overlay shows banked gold + first escape bonus, then clears within ~3s
 - [ ] Player lands in the hideout, `UNSECURED` is 0, `Gold` went up
-- [ ] Armory upgrade is affordable after one run and the rack visibly grows
+- [ ] Weapon upgrade is affordable after one run and the rack visibly grows
 - [ ] Weapon damage on the HUD increases by 5 after the upgrade
 - [ ] Re-enter pad returns the player to the cell with chains already off
 
@@ -153,7 +153,7 @@ Run in Studio (Play, then Play with 2 players for the multiplayer rows).
 - [ ] Dying with unsecured gold shows "CAPTURED!", lists gold lost and gear kept
 - [ ] The equipped weapon survives death
 - [ ] Respawn puts the player back in the cell within a couple of seconds
-- [ ] Leaving and rejoining preserves Gold, weapons, and armory level (API services on)
+- [ ] Leaving and rejoining preserves Gold, weapons, and weapon upgrade level (API services on)
 - [ ] With API services **off**, the game still plays and prints the fallback warning
 
 **Multiplayer**

@@ -34,14 +34,14 @@ function UpgradeService.Init(context, builtWorld)
 
 	-- Price-free label. ProximityPrompt.ObjectText is replicated, so it can never show a
 	-- per-player price from here; PromptController writes the live cost locally per client.
-	upgradePrompt = makePrompt(world.UpgradePad, "Upgrade", "UPGRADE ARMORY", 0.4)
+	upgradePrompt = makePrompt(world.UpgradePad, "Upgrade", "UPGRADE YOUR WEAPONS", 0.4)
 	upgradePrompt:SetAttribute("PTKGate", "upgrade")
 
 	reenterPrompt = makePrompt(world.ReenterPad, "Enter", "BREAK INTO THE CASTLE AGAIN", 0.4)
 	reenterPrompt:SetAttribute("PTKGate", "reenter")
 
 	upgradePrompt.Triggered:Connect(function(player)
-		UpgradeService.BuyWeaponRack(player)
+		UpgradeService.BuyWeaponUpgrade(player)
 	end)
 
 	reenterPrompt.Triggered:Connect(function(player)
@@ -49,27 +49,29 @@ function UpgradeService.Init(context, builtWorld)
 	end)
 end
 
--- Per-player cost of the NEXT armory level. Sent in StateUpdate so the client can render an
+-- Per-player cost of the NEXT weapon upgrade level. Sent in StateUpdate so the client can render an
 -- accurate price without the (replicated, shared) prompt label ever going stale. (Bug 4.)
 function UpgradeService.GetCost(player: Player): number
 	local profile = ctx and ctx.Data.Get(player)
 	local level = profile and profile.Castle.WeaponRackLevel or 0
-	return GameConfig.Economy.WeaponRackCost * (level + 1)
+	return GameConfig.Economy.WeaponUpgradeCost * (level + 1)
 end
 
-function UpgradeService.BuyWeaponRack(player: Player)
+-- Saved as profile.Castle.WeaponRackLevel. Renaming a saved key needs a schema migration
+-- (CLAUDE.md rule 7), so the persisted name stays until the SchemaVersion 2 migration.
+function UpgradeService.BuyWeaponUpgrade(player: Player)
 	local profile = ctx.Data.Get(player)
 	if not profile then
 		return
 	end
 
 	local level = profile.Castle.WeaponRackLevel or 0
-	if level >= GameConfig.Economy.WeaponRackMaxLevel then
-		Notify:FireClient(player, { Text = "ARMORY FULLY UPGRADED", Kind = "warn" })
+	if level >= GameConfig.Economy.WeaponUpgradeMaxLevel then
+		Notify:FireClient(player, { Text = "WEAPONS FULLY UPGRADED", Kind = "warn" })
 		return
 	end
 
-	local cost = GameConfig.Economy.WeaponRackCost * (level + 1)
+	local cost = UpgradeService.GetCost(player)
 
 	-- SECURITY: TrySpendGold is the only path that can reduce gold, and it returns false
 	-- rather than going negative. The grant happens only if it returned true.
@@ -93,8 +95,11 @@ function UpgradeService.BuyWeaponRack(player: Player)
 	rack.Color = Color3.fromRGB(140 + level * 30, 100 + level * 30, 55)
 
 	Notify:FireClient(player, {
-		Text = ("ARMORY LEVEL %d"):format(level + 1),
-		Sub = ("+%d DAMAGE"):format(GameConfig.Economy.WeaponRackDamageBonus),
+		Text = "WEAPONS UPGRADED",
+		Sub = ("LEVEL %d · +%d DAMAGE ON EVERY WEAPON"):format(
+			level + 1,
+			GameConfig.Economy.WeaponUpgradeDamageBonus
+		),
 		Kind = "milestone",
 	})
 

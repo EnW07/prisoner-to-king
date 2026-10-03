@@ -48,7 +48,7 @@ function EconomyService.TrySpendGold(player: Player, amount: number, reason: str
 	return true
 end
 
--- Total damage of the equipped weapon including permanent Training/Armory upgrades.
+-- Total damage of the equipped weapon including the permanent weapon-upgrade bonus.
 function EconomyService.GetPlayerDamage(player: Player): number
 	local profile = ctx.Data.Get(player)
 	if not profile then
@@ -56,7 +56,7 @@ function EconomyService.GetPlayerDamage(player: Player): number
 	end
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId) or WeaponConfig.Get("fists")
 	local bonus = (profile.Castle.WeaponRackLevel or 0)
-		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponRackDamageBonus
+		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponUpgradeDamageBonus
 	return (weapon :: any).Damage + bonus
 end
 
@@ -76,8 +76,7 @@ function EconomyService.PushState(player: Player)
 		WeaponDamage = EconomyService.GetPlayerDamage(player),
 		Objective = run and run.Objective or "",
 		RunState = run and run.State or "Safe",
-		WeaponRackLevel = profile.Castle.WeaponRackLevel or 0,
-		WeaponRackCost = require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponRackCost,
+		WeaponUpgradeLevel = profile.Castle.WeaponRackLevel or 0,
 		TotalEscapes = profile.Meta.TotalEscapes or 0,
 
 		-- Per-player prompt state. Prompt.Enabled is replicated (shared), so the client gates
