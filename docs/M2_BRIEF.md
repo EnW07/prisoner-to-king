@@ -86,12 +86,28 @@ version that works:
 - A pity meter toward a guaranteed Rare from Captain kills (§13).
 - Show it as a bar with a number, e.g. `RARE IN: 2 CAPTAIN KILLS`.
 
+### 7. Co-play hook — the missing signal (added 2026-10-03)
+
+Built after item 1 and before items 2–6. Source: `docs/MARKET_AND_REVENUE.md`. Roblox's June
+2026 discovery update ranks on "intentional co-play days per user", and PTK currently
+generates none of it. This item is the minimum that produces the signal. It is **not** the
+blueprint §22 party system.
+
+- Two players who ESCAPE within a short window of each other both get a bonus. The ESCAPED
+  screen shows it, so the cause is obvious.
+- A downed player can be revived by another player within a few seconds, instead of dying
+  outright.
+- Server-authoritative: the server validates a revive by distance and state, and computes
+  the escape bonus from the actual escape timestamps.
+- Additive only. Playing solo must never become less efficient (§22).
+- Analytics: `CoPlayExtraction`, `PlayerRevived`, `PartyBonusAwarded`.
+
 ---
 
 ## Explicitly out of scope
 
 Not in this milestone, no matter how small it seems: Greenvale, a second kingdom, armor,
-parties, friends, contracts, collection index, PvP, player raids, trading, mounts, crafting,
+parties (item 7's escape bonus and revive are the only co-play), friends, contracts, collection index, PvP, player raids, trading, mounts, crafting,
 cosmetics, the store, VIP, or any monetization.
 
 Milestone 3 exists. Let it.
@@ -104,8 +120,9 @@ Milestone 3 exists. Let it.
   numbers, schema migration if the profile shape changes (it will — inventory and pity meter
   are new fields, so bump `SchemaVersion` and write the migration step).
 - New analytics events: `CaptainEngaged`, `CaptainKilled`, `CaptainDefeatedPlayer`,
-  `RareObtained`, `WantedLevelReached`, `WeaponEquipped`.
-- One branch per numbered item above. Six small PRs beat one large one.
+  `RareObtained`, `WantedLevelReached`, `WeaponEquipped`, plus item 7's `CoPlayExtraction`,
+  `PlayerRevived`, `PartyBonusAwarded`.
+- One branch per numbered item above. Seven small PRs beat one large one.
 
 ## Done means
 
