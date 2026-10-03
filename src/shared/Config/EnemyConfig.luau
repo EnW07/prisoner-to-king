@@ -35,6 +35,9 @@ export type Enemy = {
 	BodyColor: Color3,
 	BodySize: Vector3,
 	Boss: boolean?,
+	-- Presentation only: which body shape EnemyService dresses the rig in, so enemy types
+	-- read apart as silhouettes (VISUAL_OVERHAUL_PLAN Phase 3). nil = plain rig.
+	Silhouette: string?,
 	-- Boss-only. Rotation is the fixed melee order; the attack named by RangedAttack is used
 	-- instead when the target is out of melee reach. Fixed, not random: a player who dies
 	-- should be able to learn the pattern (§12, §116), and run 1 stays deterministic (§115).
@@ -58,6 +61,7 @@ local EnemyConfig: { [string]: Enemy } = {
 		LootTable = "sleepy_guard",
 		BodyColor = Color3.fromRGB(105, 110, 125),
 		BodySize = Vector3.new(2, 4, 1),
+		Silhouette = "Slouch", -- hunched, capped, sword drooping: harmless at a glance
 	},
 
 	-- Spawned by the alarm after the chest is opened. Applies pressure during the run out.
@@ -74,6 +78,7 @@ local EnemyConfig: { [string]: Enemy } = {
 		LootTable = "alarm_guard",
 		BodyColor = Color3.fromRGB(80, 70, 70),
 		BodySize = Vector3.new(2, 4, 1),
+		Silhouette = "Armored", -- helmed, upright, tall spear, `bleed` tabard: the alarm's threat
 	},
 
 	-- M2 miniboss (blueprint §12 "Captain", §18 template, §111 stats). Waits in his hall off

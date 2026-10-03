@@ -8,6 +8,7 @@
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 
 local ExtractionService = {}
 local ctx
@@ -53,7 +54,7 @@ end
 -- Called when the alarm goes off, to make the exit obvious. (§8: "Exit marker activates.")
 function ExtractionService.Reveal()
 	world.ExtractionPad.Material = Enum.Material.Neon
-	world.ExtractionPad.Color = Color3.fromRGB(90, 255, 140)
+	world.ExtractionPad.Color = Palette.escape
 end
 
 function ExtractionService.Complete(player: Player)
