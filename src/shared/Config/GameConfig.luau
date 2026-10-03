@@ -72,6 +72,14 @@ local GameConfig = {
 		RespawnDelay = 25,
 		CorpseDespawn = 3,
 		LeashDistance = 90,
+		-- The attack cycle's strike area: a box in front of the enemy, along the facing it
+		-- committed to at the start of its windup. Reach is the enemy's AttackRange.
+		StrikeWidth = 5,
+		StrikeBackReach = 1.5, -- a player overlapping the enemy's own position still counts
+		StrikeHeight = 5, -- vertical slack, for ramps and stairs
+		-- Hysteresis around StandoffDistance: closer than (stand-off - slack) and the enemy
+		-- steps back to it, so it never presses into you.
+		StandoffSlack = 1,
 		-- R15 rigs (RigFactory): a body this size gets scale 1. It's the M1 guard's BodySize,
 		-- so EnemyConfig.BodySize keeps meaning exactly what it did.
 		RigReferenceSize = Vector3.new(2, 4, 1),
@@ -173,10 +181,11 @@ local GameConfig = {
 		RunThreshold = 13, -- studs/s: at or above this it runs instead of walks
 		WalkReferenceSpeed = 16, -- clip playback speed = actual speed / this
 		UpdateInterval = 0.15, -- seconds between locomotion updates (not every frame: §46)
-		-- Procedural enemy swing, used while AnimationConfig has no Attack clip.
-		EnemySwingWindUp = 0.12,
-		EnemySwingStrike = 0.08,
-		EnemySwingRecover = 0.3,
+		-- Procedural enemy attack poses, used while AnimationConfig has no Attack clip. The
+		-- windup's length comes from EnemyConfig.WindupTime; these shape it.
+		EnemyDrawTime = 0.3, -- the snap into the draw-back; it then creeps deeper until release
+		EnemyStrikeTime = 0.08, -- the fast arc through the strike
+		EnemyRecoverShare = 0.85, -- share of RecoveryTime spent returning to rest (slowly)
 	},
 
 	-- ── Feel (client): procedural animation, all TweenService ───

@@ -23,6 +23,11 @@ local TweenService = game:GetService("TweenService")
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local AnimationConfig = require(game.ReplicatedStorage.Shared.Config.AnimationConfig)
 local RigFactory = require(script.Parent.RigFactory)
+local ArmPose = require(game.ReplicatedStorage.Shared.ArmPose)
+local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
+
+-- Parts that make up an enemy's weapon (RigFactory names), glowed during a windup.
+local WEAPON_PARTS = { Blade = true, Spear = true, Spearhead = true }
 
 local ANIM = GameConfig.Animation
 local EnemyAnimator = {}
@@ -34,8 +39,10 @@ type State = {
 	Set: { [string]: string? },
 	Tracks: { [string]: AnimationTrack | false }, -- false = tried and failed; don't retry
 	Current: string?,
-	Shoulder: Motor6D?,
-	ShoulderRest: CFrame?,
+	Arm: ArmPose.Joint?, -- the right shoulder, Motor6D or AnimationConstraint form
+	-- The weapon parts, and their normal look, for the windup glow.
+	Weapon: { { Part: BasePart, Color: Color3, Material: Enum.Material } },
+	UsingClip: boolean, -- this attack is playing an AnimationConfig clip, not poses
 }
 
 local states: { [any]: State } = {}
@@ -181,7 +188,20 @@ function EnemyAnimator.Attach(record)
 		a.Parent = humanoid
 		animator = a
 	end
-	local shoulder = record.Model:FindFirstChild("RightShoulder", true)
+	local arm = ArmPose.Find(record.Model)
+	if not arm then
+		warn(
+			("[EnemyAnimator] %s has no right shoulder joint; its attacks won't move the arm"):format(
+				record.EnemyId
+			)
+		)
+	end
+	local weapon = {}
+	for _, p in record.Model:GetChildren() do
+		if p:IsA("BasePart") and WEAPON_PARTS[p.Name] then
+			table.insert(weapon, { Part = p, Color = p.Color, Material = p.Material })
+		end
+	end
 	local state: State = {
 		Humanoid = humanoid,
 		Root = root,
@@ -189,8 +209,9 @@ function EnemyAnimator.Attach(record)
 		Set = set,
 		Tracks = {},
 		Current = nil,
-		Shoulder = if shoulder and shoulder:IsA("Motor6D") then shoulder else nil,
-		ShoulderRest = if shoulder and shoulder:IsA("Motor6D") then shoulder.C0 else nil,
+		Arm = arm,
+		Weapon = weapon,
+		UsingClip = false,
 	}
 	states[record] = state
 	locomote(state)
@@ -223,46 +244,75 @@ function EnemyAnimator.PlayAction(record, key: string): AnimationTrack?
 	return t
 end
 
--- A guard's swing: the configured "Attack" clip if there is one, otherwise a procedural
--- wind-up / strike / recover on the real right shoulder.
-function EnemyAnimator.Swing(record)
-	if EnemyAnimator.PlayAction(record, "Attack") then
+-- The weapon glows `bleed` through the windup: the no-sound telegraph (art §2).
+local function glow(state: State, on: boolean)
+	for _, w in state.Weapon do
+		if w.Part.Parent then
+			w.Part.Color = if on then Palette.bleed else w.Color
+			w.Part.Material = if on then Enum.Material.Neon else w.Material
+		end
+	end
+end
+
+local function poseTo(
+	state: State,
+	pose: ArmPose.Pose,
+	time: number,
+	style: Enum.EasingStyle,
+	dir: Enum.EasingDirection
+)
+	local arm = state.Arm
+	if not arm or not arm.Target.Parent then
 		return
 	end
+	ArmPose.TweenTo(arm, ArmPose.Rotation(arm.Rig, pose), TweenInfo.new(math.max(time, 0.01), style, dir))
+end
+
+-- One phase of an attack cycle (EnemyService.BeginAttack), driven through the real right
+-- shoulder (playtest 5, item 2: the arm swings, not just the weapon):
+--   Windup  snap into a draw-back, then keep drawing back until the release (anticipation)
+--   Strike  a fast arc down and across
+--   Recover a slow return to rest: the punish window, visibly
+-- An "Attack" clip in AnimationConfig replaces all three. It starts at Windup and should
+-- land its hit at the enemy's WindupTime. That's the AnimationConfig contract: imported
+-- clip in, no code change.
+function EnemyAnimator.AttackPhase(record, phase: string, duration: number)
 	local state = states[record]
-	if not state or not state.Shoulder or not state.ShoulderRest then
+	if not state then
 		return
 	end
-	local shoulder: Motor6D = state.Shoulder
-	local rest: CFrame = state.ShoulderRest
-	local Quad = Enum.EasingStyle.Quad
-	-- Same joint-space convention as CaptainService: +X raises the arm forward and up.
-	local windUp = TweenService:Create(
-		shoulder,
-		TweenInfo.new(ANIM.EnemySwingWindUp, Quad, Enum.EasingDirection.Out),
-		{ C0 = rest * CFrame.Angles(math.rad(140), 0, 0) }
-	)
-	windUp.Completed:Connect(function(playback)
-		if playback ~= Enum.PlaybackState.Completed or not shoulder.Parent then
+	local Q = Enum.EasingStyle.Quad
+	if phase == "Windup" then
+		glow(state, true)
+		local clip = track(state, "Attack")
+		state.UsingClip = clip ~= nil
+		if clip then
+			clip:Play(ANIM.FadeTime)
 			return
 		end
-		local strike = TweenService:Create(
-			shoulder,
-			TweenInfo.new(ANIM.EnemySwingStrike, Quad, Enum.EasingDirection.In),
-			{ C0 = rest * CFrame.Angles(math.rad(30), 0, 0) }
-		)
-		strike.Completed:Connect(function(p)
-			if p == Enum.PlaybackState.Completed and shoulder.Parent then
-				TweenService:Create(
-					shoulder,
-					TweenInfo.new(ANIM.EnemySwingRecover, Quad, Enum.EasingDirection.InOut),
-					{ C0 = rest }
-				):Play()
+		local draw = math.min(ANIM.EnemyDrawTime, duration * 0.5)
+		poseTo(state, ArmPose.Chop.WindUp, draw, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		task.delay(draw, function()
+			if states[record] == state and record.State == "Windup" then
+				poseTo(
+					state,
+					ArmPose.Chop.WindUpDeep,
+					duration - draw,
+					Enum.EasingStyle.Sine,
+					Enum.EasingDirection.InOut
+				)
 			end
 		end)
-		strike:Play()
-	end)
-	windUp:Play()
+	elseif phase == "Strike" then
+		glow(state, false)
+		if not state.UsingClip then
+			poseTo(state, ArmPose.Chop.Strike, ANIM.EnemyStrikeTime, Q, Enum.EasingDirection.In)
+		end
+	elseif phase == "Recover" then
+		if not state.UsingClip then
+			poseTo(state, ArmPose.Chop.Rest, duration * ANIM.EnemyRecoverShare, Q, Enum.EasingDirection.InOut)
+		end
+	end
 end
 
 return EnemyAnimator

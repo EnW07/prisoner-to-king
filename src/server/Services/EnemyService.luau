@@ -11,6 +11,7 @@ local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
 local EnemyAnimator = require(script.Parent.EnemyAnimator)
+local CollisionGroups = require(script.Parent.CollisionGroups)
 
 local EnemyService = {}
 local ctx
@@ -28,6 +29,7 @@ function EnemyService.Init(context)
 	container.Name = "Enemies"
 	container.Parent = workspace
 
+	CollisionGroups.Init()
 	RigFactory.Prewarm(EnemyConfig)
 	EnemyAnimator.Init()
 
@@ -98,6 +100,7 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 	local ok, err = pcall(function()
 		model, humanoid = buildRig(enemyId, cfg, cframe)
 		model:SetAttribute("EnemyId", enemyId)
+		CollisionGroups.TagEnemy(model) -- never pushes, or is pushed by, a player
 		model.Parent = container
 	end)
 	if not ok then
@@ -112,7 +115,11 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		EnemyId = enemyId,
 		State = "Patrol",
 		Target = nil :: Player?,
-		LastAttack = 0,
+		-- Attack cycle (BeginAttack). Attacking pauses Think; AttackToken cancels a cycle
+		-- whose enemy died or was removed mid-swing.
+		Attacking = false,
+		AttackToken = 0,
+		NextAttackAt = 0,
 		PatrolA = opts.PatrolA,
 		PatrolB = opts.PatrolB,
 		PatrolTarget = opts.PatrolA,
@@ -143,48 +150,81 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 end
 
 -- ── AI tick ─────────────────────────────────────────────────────
+-- Flattened (XZ) vector from a to b.
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function livingRoot(player: Player): BasePart?
+	local char = player.Character
+	local pRoot = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local pHum = char and char:FindFirstChildOfClass("Humanoid")
+	if pRoot and pHum and pHum.Health > 0 then
+		return pRoot
+	end
+	return nil
+end
+
+-- Turn to face a point, level, without moving. Used only OUTSIDE an attack: once a windup
+-- starts the enemy is committed and doesn't track.
+local function face(root: BasePart, point: Vector3)
+	local d = flat(point - root.Position)
+	if d.Magnitude > 0.05 then
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + d)
+	end
+end
+
+-- ── AI tick ─────────────────────────────────────────────────────
+-- Playtest 5, item 1. The old Attack branch kept walking INTO the player while a timer
+-- subtracted health: a damage-over-time field with legs. Now a fight has a rhythm:
+--   Chase   close to the stand-off ring around the player, never into them
+--   Hold    stop at StandoffDistance and face the player, stepping back if crowded
+--   Windup  committed: no moving, no turning (that's what makes dodging possible)
+--   Strike  one hit test, at one moment, against the committed facing
+--   Recover a still, vulnerable pause: the player's punish window
+-- Windup, strike and recover run on their own timers (BeginAttack), not on this tick.
 function EnemyService.Think(record, _dt: number)
 	local model, humanoid, cfg = record.Model, record.Humanoid, record.Config
 	local root = model.PrimaryPart
-	if not root or humanoid.Health <= 0 then
+	if not root or humanoid.Health <= 0 or record.Attacking then
 		return
 	end
 
-	-- Find the closest living player inside aggro range.
-	local best, bestDist = nil, math.huge
+	-- Closest living player.
+	local best: Player? = nil
+	local bestRoot: BasePart? = nil
+	local bestDist = math.huge
 	for _, player in Players:GetPlayers() do
-		local char = player.Character
-		local pRoot = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local pHum = char and char:FindFirstChildOfClass("Humanoid")
-		if pRoot and pHum and pHum.Health > 0 then
-			local d = (pRoot.Position - root.Position).Magnitude
+		local pRoot = livingRoot(player)
+		if pRoot then
+			local d = flat(pRoot.Position - root.Position).Magnitude
 			if d < bestDist then
-				best, bestDist = player, d
+				best, bestRoot, bestDist = player, pRoot, d
 			end
 		end
 	end
 
 	local leashed = (root.Position - record.SpawnCFrame.Position).Magnitude > GameConfig.Enemy.LeashDistance
 
-	if best and bestDist <= cfg.AggroRange and not leashed then
+	if best and bestRoot and bestDist <= cfg.AggroRange and not leashed then
 		record.Target = best
-		if bestDist <= cfg.AttackRange then
-			record.State = "Attack"
-			local now = os.clock()
-			if now - record.LastAttack >= cfg.AttackCooldown then
-				record.LastAttack = now
-				EnemyService.AttackPlayer(record, best)
-			end
-			-- Face the target while attacking.
-			local pRoot = best.Character and best.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if pRoot then
-				humanoid:MoveTo(pRoot.Position)
-			end
-		else
+		local standoff = cfg.StandoffDistance or cfg.AttackRange
+		local away = flat(root.Position - bestRoot.Position)
+		local awayDir = if away.Magnitude > 0.05 then away.Unit else -root.CFrame.LookVector
+
+		if bestDist <= cfg.AttackRange and os.clock() >= record.NextAttackAt then
+			EnemyService.BeginAttack(record, bestRoot)
+		elseif bestDist > standoff then
+			-- Chase to the stand-off ring, not to the player's position.
 			record.State = "Chase"
-			local pRoot = best.Character and best.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if pRoot then
-				humanoid:MoveTo(pRoot.Position)
+			humanoid:MoveTo(bestRoot.Position + awayDir * standoff)
+		else
+			record.State = "Hold"
+			if bestDist < standoff - GameConfig.Enemy.StandoffSlack then
+				humanoid:MoveTo(bestRoot.Position + awayDir * standoff) -- crowded: step back
+			else
+				humanoid:MoveTo(root.Position) -- stop
+				face(root, bestRoot.Position)
 			end
 		end
 		return
@@ -208,9 +248,69 @@ function EnemyService.Think(record, _dt: number)
 	end
 end
 
-function EnemyService.AttackPlayer(record, player: Player)
-	EnemyAnimator.Swing(record)
-	EnemyService.DamagePlayer(record, player, record.Config.Damage, "ATTACK")
+-- Is `pos` inside this enemy's strike area, measured from the facing it committed to?
+local function inStrike(origin: CFrame, cfg, pos: Vector3): boolean
+	local p = origin:PointToObjectSpace(pos)
+	local E = GameConfig.Enemy
+	return math.abs(p.X) <= E.StrikeWidth / 2
+		and p.Z <= E.StrikeBackReach
+		and p.Z >= -cfg.AttackRange
+		and math.abs(p.Y) <= E.StrikeHeight
+end
+
+-- One full attack: committed windup → strike → recovery. All damage is decided here, on
+-- the server; clients only see the replicated pose (EnemyAnimator).
+function EnemyService.BeginAttack(record, targetRoot: BasePart)
+	local cfg = record.Config
+	local humanoid: Humanoid = record.Humanoid
+	local root = record.Model.PrimaryPart :: BasePart
+	local windup = cfg.WindupTime or 0
+	local recovery = cfg.RecoveryTime or 0
+
+	record.Attacking = true
+	record.State = "Windup"
+	record.AttackToken += 1
+	local token = record.AttackToken
+	record.NextAttackAt = os.clock() + cfg.AttackCooldown
+
+	-- Commit: plant, face the player ONCE, and stop turning until recovery is over.
+	humanoid:MoveTo(root.Position)
+	humanoid.AutoRotate = false
+	face(root, targetRoot.Position)
+	local origin = root.CFrame
+	EnemyAnimator.AttackPhase(record, "Windup", windup)
+
+	local function stillOn(): boolean
+		return record.AttackToken == token and record.State ~= "Dead" and record.Model.Parent ~= nil
+	end
+
+	task.delay(windup, function()
+		if not stillOn() then
+			return
+		end
+		-- Strike: one test, now, against the committed facing. Step out during the windup
+		-- and it misses.
+		record.State = "Strike"
+		EnemyAnimator.AttackPhase(record, "Strike", 0)
+		for _, player in Players:GetPlayers() do
+			local pRoot = livingRoot(player)
+			if pRoot and inStrike(origin, cfg, pRoot.Position) then
+				EnemyService.DamagePlayer(record, player, cfg.Damage, cfg.AttackName or "ATTACK")
+			end
+		end
+
+		-- Recover: stand still and take it.
+		record.State = "Recover"
+		EnemyAnimator.AttackPhase(record, "Recover", recovery)
+		task.delay(recovery, function()
+			if not stillOn() then
+				return
+			end
+			humanoid.AutoRotate = true
+			record.Attacking = false
+			record.State = "Hold"
+		end)
+	end)
 end
 
 -- The one path by which an enemy hurts a player. Records which attack landed so the
