@@ -3,11 +3,13 @@
 -- Blueprint §47. Every drop gets a server-generated ID and is claimed ATOMICALLY.
 --
 -- SECURITY: the client never tells the server what it picked up or how much it is worth.
--- Pickup is driven by a server-side Touched check plus a distance re-validation, and the
--- claim flag is flipped before any reward is granted, so two touches cannot both pay out.
+-- Pickup is driven server-side, by a proximity sweep plus Touched, with a distance
+-- re-validation. The claim flag is flipped before any reward is granted, so two triggers
+-- cannot both pay out.
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local LootConfig = require(game.ReplicatedStorage.Shared.Config.LootConfig)
@@ -28,6 +30,21 @@ function LootService.Init(context)
 	container = Instance.new("Folder")
 	container.Name = "LootDrops"
 	container.Parent = workspace
+
+	-- Server-side proximity sweep. This is the primary pickup path now that drops are
+	-- anchored: Touched on an anchored, non-collidable part depends on which character
+	-- part grazes it (an accessory's parent isn't the character), so it can miss. Touched
+	-- stays connected for instant pickup; this sweep guarantees it. TryPickup re-validates
+	-- everything either way.
+	local accumulator = 0
+	RunService.Heartbeat:Connect(function(dt)
+		accumulator += dt
+		if accumulator < LootConfig.Pickups.SweepInterval then
+			return
+		end
+		accumulator = 0
+		LootService.Sweep()
+	end)
 end
 
 local function newId(): string
@@ -59,6 +76,9 @@ local function landingPoint(origin: Vector3, size: Vector3): Vector3
 	local probe = Vector3.new(0, -cfg.FloorProbeDepth, 0)
 	local floor = workspace:Raycast(origin + scatter, probe, params)
 		or workspace:Raycast(origin, probe, params)
+	if not floor then
+		warn(("[Loot] No floor under drop at %s; resting at the drop point."):format(tostring(origin)))
+	end
 	local base = if floor then floor.Position else origin
 	return base + Vector3.new(0, size.Y / 2 + cfg.Hover, 0)
 end
@@ -125,6 +145,7 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 		Claimed = false,
 		OwnerUserId = ownerUserId, -- nil = public
 		SpawnTime = os.clock(),
+		SafePosition = landing, -- where the sweep puts it back if it ever ends up below the map
 	}
 	drops[id] = record
 
@@ -147,6 +168,38 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	end)
 
 	return id
+end
+
+-- Proximity pickup plus a below-the-map safety net. Runs every Pickups.SweepInterval.
+function LootService.Sweep()
+	local cfg = LootConfig.Pickups
+	-- Snapshot first: a pickup can yield (equipping a weapon waits for the hand), and new
+	-- drops may be added meanwhile. Never mutate a table while iterating it across a yield.
+	local snapshot = {}
+	for id, record in drops do
+		table.insert(snapshot, { id, record })
+	end
+	for _, entry in snapshot do
+		local id, record = entry[1], entry[2]
+		if not drops[id] then
+			continue
+		end
+		local part = record.Instance
+		if part.Position.Y < cfg.MinSafeY then
+			warn(("[Loot] %s fell below the map; restoring it."):format(id))
+			part.CFrame = CFrame.new(record.SafePosition)
+		end
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root and (root.Position - part.Position).Magnitude <= cfg.PickupRadius then
+				LootService.TryPickup(player, id)
+				if not drops[id] then
+					break
+				end
+			end
+		end
+	end
 end
 
 function LootService.TryPickup(player: Player, id: string)

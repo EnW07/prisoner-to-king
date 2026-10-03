@@ -63,6 +63,10 @@ LootConfig.Pickups = {
 	HopTime = 0.45, -- seconds, whole arc
 	Hover = 0.4, -- resting gap above the floor so it never z-fights or sinks
 	FloorProbeDepth = 40, -- how far down to search for a floor
+	-- Safety net: a drop below this Y is moved back to its landing point. The dungeon floor
+	-- is at Y = 0, so this only fires if something is badly wrong.
+	MinSafeY = -20,
+	SweepInterval = 0.15, -- seconds between server-side proximity pickup checks
 	Lifetime = 120,
 	PickupRadius = 7,
 }
