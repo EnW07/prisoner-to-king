@@ -256,7 +256,7 @@ function WorldBuilder.Build()
 	local reenterPad =
 		box("ReenterPad", 8, 0.3, 392, 6, 0.6, 6, Color3.fromRGB(220, 80, 80), interact, Enum.Material.Neon)
 
-	-- The armory rack visibly grows with each upgrade (§16: upgrades change the 3D space).
+	-- The weapon rack visibly grows with each weapon upgrade (§16: upgrades change the 3D space).
 	local rack = box("WeaponRack", -8, 2, 388, 6, 4, 1, WOOD, props, Enum.Material.WoodPlanks)
 	rack.CanCollide = false
 

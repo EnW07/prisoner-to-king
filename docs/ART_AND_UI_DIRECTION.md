@@ -38,7 +38,7 @@ Named values. Use these, not approximations.
 | `stone` | `#5A5A63` | Dungeon walls, neutral architecture |
 | `pitch` | `#2E2E36` | Floors, shadow, the base the whole scene sits on |
 | `ember` | `#FF9B3D` | Torchlight, warmth, safety-adjacent |
-| `gold` | `#FFCD50` | Currency, banked value, the armory |
+| `gold` | `#FFCD50` | Currency, banked value, weapon upgrades |
 | `bleed` | `#FF6B4A` | **Unsecured loot, danger, wanted level** |
 | `escape` | `#5CE08C` | Extraction, safety achieved |
 
@@ -182,7 +182,7 @@ with sections 1–5 of this document.
 1. **Enemy readability** — a player must know what's attacking and when to dodge
 2. **Weapon silhouettes** — the whole progression fantasy is visible in your hands
 3. **The extraction pad** — the most emotionally loaded object in the game
-4. **The hideout/armory** — where progress is displayed
+4. **The hideout and weapon rack** — where progress is displayed
 5. Environment detail — last, and it is genuinely last
 
 ### Scale
