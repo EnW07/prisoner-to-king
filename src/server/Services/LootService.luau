@@ -8,6 +8,7 @@
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
 
 local LootConfig = require(game.ReplicatedStorage.Shared.Config.LootConfig)
 local WeaponConfig = require(game.ReplicatedStorage.Shared.Config.WeaponConfig)
@@ -34,6 +35,34 @@ local function newId(): string
 	return ("loot_%d_%d"):format(os.time(), nextId)
 end
 
+-- Where a drop comes to rest. P0 fix (playtest 3): loot used to be an unanchored,
+-- CanCollide = false part flung with a velocity, so nothing stopped it falling through
+-- the floor. Now the landing point is raycast against the level geometry and the part
+-- stays anchored. It can't fall, roll away, or be knocked into a wall.
+local function landingPoint(origin: Vector3, size: Vector3): Vector3
+	local cfg = LootConfig.Pickups
+	local world = ctx.World and ctx.World.Folder
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = if world
+		then { world:FindFirstChild("Zones"), world:FindFirstChild("Interactables") }
+		else {}
+
+	-- Scatter sideways, but stop short of any wall or door between the drop and the target.
+	local angle = math.random() * 2 * math.pi
+	local scatter = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (math.random() * cfg.ScatterRadius)
+	local wall = workspace:Raycast(origin, scatter, params)
+	if wall then
+		scatter = scatter.Unit * math.max(0, wall.Distance - size.Magnitude)
+	end
+
+	local probe = Vector3.new(0, -cfg.FloorProbeDepth, 0)
+	local floor = workspace:Raycast(origin + scatter, probe, params)
+		or workspace:Raycast(origin, probe, params)
+	local base = if floor then floor.Position else origin
+	return base + Vector3.new(0, size.Y / 2 + cfg.Hover, 0)
+end
+
 -- kind: "Gold" | "Key" | "Weapon"
 function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerUserId: number?)
 	local visual = LootConfig.Pickups[kind]
@@ -48,16 +77,30 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	p.Size = visual.Size
 	p.Color = visual.Color
 	p.Material = Enum.Material.Neon
+	p.Anchored = true
 	p.CanCollide = false
-	p.CFrame = CFrame.new(position + Vector3.new(0, 2, 0))
+	p.CFrame = CFrame.new(position)
 	p.Parent = container
 
-	-- Loot physically bursts out and is visible (§8).
-	p.AssemblyLinearVelocity = Vector3.new(
-		(math.random() - 0.5) * LootConfig.Pickups.BurstForce,
-		LootConfig.Pickups.BurstForce * 0.7,
-		(math.random() - 0.5) * LootConfig.Pickups.BurstForce
+	-- Loot still bursts out visibly (§8), as a tweened hop onto the floor rather than physics.
+	local cfg = LootConfig.Pickups
+	local landing = landingPoint(position, visual.Size)
+	local apex = position:Lerp(landing, 0.5) + Vector3.new(0, cfg.HopHeight, 0)
+	local rise = TweenService:Create(
+		p,
+		TweenInfo.new(cfg.HopTime / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = CFrame.new(apex) }
 	)
+	rise.Completed:Connect(function()
+		if p.Parent then
+			TweenService:Create(
+				p,
+				TweenInfo.new(cfg.HopTime / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ CFrame = CFrame.new(landing) }
+			):Play()
+		end
+	end)
+	rise:Play()
 
 	local label = Instance.new("BillboardGui")
 	label.Size = UDim2.fromOffset(140, 34)

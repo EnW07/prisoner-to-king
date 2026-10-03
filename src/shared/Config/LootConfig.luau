@@ -56,8 +56,13 @@ LootConfig.Pickups = {
 		Label = "Cellblock Key",
 	},
 	Weapon = { Color = Color3.fromRGB(200, 200, 200), Size = Vector3.new(0.6, 2.4, 0.6), Label = "Weapon" },
-	-- Loot bursts out physically and is visible on the floor (§8).
-	BurstForce = 22,
+	-- Loot hops out and comes to rest, anchored, on the floor (§8). No physics: an unanchored
+	-- drop fell through the floor (playtest 3, P0).
+	ScatterRadius = 6, -- max sideways distance from the drop point
+	HopHeight = 4,
+	HopTime = 0.45, -- seconds, whole arc
+	Hover = 0.4, -- resting gap above the floor so it never z-fights or sinks
+	FloorProbeDepth = 40, -- how far down to search for a floor
 	Lifetime = 120,
 	PickupRadius = 7,
 }
