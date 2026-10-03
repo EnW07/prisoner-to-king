@@ -13,6 +13,7 @@
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -21,7 +22,99 @@ local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfi
 local ClientSettings = require(script.Parent:WaitForChild("ClientSettings"))
 
 local FEEL = GameConfig.Feel
--- The graphics preset (J2): LOW hides the light shafts and halves the torch update rate.
+local VFX = GameConfig.VFX
+local Palette = require(Shared:WaitForChild("Config"):WaitForChild("Palette"))
+
+-- ── Ambient particles (K1): motes in light shafts, embers and smoke on torches ──
+-- Client-made so the graphics preset can switch them off. Low rates: dozens of emitters
+-- at a couple of particles a second each.
+local ambientEmitters: { ParticleEmitter } = {}
+
+local function emitter(parent: Instance, name: string, rate: number): ParticleEmitter
+	local e = Instance.new("ParticleEmitter")
+	e.Name = name
+	e.Rate = rate
+	e.Parent = parent
+	table.insert(ambientEmitters, e)
+	return e
+end
+
+local function addMotes(shaft: Instance)
+	if not shaft:IsA("BasePart") or shaft:FindFirstChild("Motes") then
+		return
+	end
+	local e = emitter(shaft, "Motes", VFX.MoteRate)
+	e.Lifetime = NumberRange.new(3, 5)
+	e.Speed = NumberRange.new(0.2, 0.6)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Size = NumberSequence.new(0.12)
+	e.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.3, 0.3),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	e.Color = ColorSequence.new(Palette.ember)
+	e.LightEmission = 0.8
+	e.Acceleration = Vector3.new(0, -0.15, 0)
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+end
+
+local function addTorchParticles(flame: Instance)
+	if not flame:IsA("BasePart") or flame:FindFirstChild("Embers") then
+		return
+	end
+	local embers = emitter(flame, "Embers", VFX.EmberRate)
+	embers.Lifetime = NumberRange.new(0.6, 1.2)
+	embers.Speed = NumberRange.new(1.5, 3)
+	embers.SpreadAngle = Vector2.new(25, 25)
+	embers.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.18),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	embers.Color = ColorSequence.new(Palette.ember)
+	embers.LightEmission = 1
+	embers.Acceleration = Vector3.new(0, 2, 0)
+	local smoke = emitter(flame, "Smoke", VFX.SmokeRate)
+	smoke.Lifetime = NumberRange.new(1.5, 2.5)
+	smoke.Speed = NumberRange.new(0.8, 1.4)
+	smoke.SpreadAngle = Vector2.new(15, 15)
+	smoke.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.5),
+		NumberSequenceKeypoint.new(1, 1.6),
+	})
+	smoke.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.75),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	smoke.Color = ColorSequence.new(Palette.pitch)
+	smoke.Acceleration = Vector3.new(0, 1, 0)
+end
+
+-- The extraction shimmer (K1): rising `escape` motes over each pad, brisker when the
+-- alarm is up and the way out matters.
+local shimmers: { ParticleEmitter } = {}
+local function addShimmer(pad: Instance)
+	if not pad:IsA("BasePart") or pad:FindFirstChild("Shimmer") then
+		return
+	end
+	local e = emitter(pad, "Shimmer", VFX.ShimmerRate)
+	e.Lifetime = NumberRange.new(1.2, 2)
+	e.Speed = NumberRange.new(2, 4)
+	e.SpreadAngle = Vector2.new(10, 10)
+	e.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.25),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	e.Color = ColorSequence.new(Palette.escape)
+	e.LightEmission = 1
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+	table.insert(shimmers, e)
+end
+
+-- The graphics preset (J2): LOW hides the light shafts, halves the torch update rate and
+-- switches the ambient particles off.
 local torchRate = FEEL.TorchUpdateRate
 local function applyGraphics()
 	local low = ClientSettings.Get("GraphicsLow") == true
@@ -31,6 +124,23 @@ local function applyGraphics()
 			shaft.Transparency = if low then 1 else 0.93
 		end
 	end
+	for _, e in ambientEmitters do
+		if e.Parent then
+			e.Enabled = not low
+		end
+	end
+end
+
+-- ── Room ambience (K2): each room shifts the neutrals ──
+local function setRoomAmbience(roomName: string)
+	local note = GameConfig.Rooms.Ambience[roomName]
+	if not note then
+		return
+	end
+	TweenService:Create(Lighting, TweenInfo.new(GameConfig.Rooms.AmbienceTime, Enum.EasingStyle.Sine), {
+		Ambient = note.Ambient,
+		OutdoorAmbient = note.Outdoor,
+	}):Play()
 end
 local WorldFXController = {}
 
@@ -97,14 +207,47 @@ local function setLid(open: boolean)
 		return
 	end
 	lidIsOpen = open
+	local lidPart = lid :: BasePart
 	if open then
 		TweenService:Create(
-			lid,
+			lidPart,
 			TweenInfo.new(FEEL.ChestLidOpenTime, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 			{ CFrame = lidOpen }
 		):Play()
+		-- The light burst (K1): gold motes up out of the chest and a flash of light.
+		local burst = lidPart:FindFirstChild("Burst")
+		if not burst then
+			local e = Instance.new("ParticleEmitter")
+			e.Name = "Burst"
+			e.Rate = 0
+			e.Lifetime = NumberRange.new(0.6, 1.1)
+			e.Speed = NumberRange.new(6, 12)
+			e.SpreadAngle = Vector2.new(40, 40)
+			e.Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.3),
+				NumberSequenceKeypoint.new(1, 0),
+			})
+			e.Color = ColorSequence.new(Palette.gold)
+			e.LightEmission = 1
+			e.Acceleration = Vector3.new(0, -10, 0)
+			e.Parent = lidPart
+			burst = e
+		end
+		if burst and burst:IsA("ParticleEmitter") then
+			burst:Emit(VFX.ChestBurst)
+		end
+		local light = Instance.new("PointLight")
+		light.Color = Palette.gold
+		light.Brightness = 6
+		light.Range = 18
+		light.Shadows = false
+		light.Parent = lidPart
+		TweenService:Create(light, TweenInfo.new(0.8, Enum.EasingStyle.Quad), { Brightness = 0 }):Play()
+		task.delay(0.9, function()
+			light:Destroy()
+		end)
 	else
-		lid.CFrame = lidClosed -- a fresh run's chest is simply shut
+		lidPart.CFrame = lidClosed -- a fresh run's chest is simply shut
 	end
 end
 
@@ -291,6 +434,26 @@ function WorldFXController.Init()
 		drops.ChildAdded:Connect(watchLoot)
 	end)
 
+	-- Ambient particles on the shafts and torches, and the shimmer on the pads.
+	for _, shaft in CollectionService:GetTagged("PTKLightShaft") do
+		addMotes(shaft)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKLightShaft"):Connect(addMotes)
+	for _, flame in CollectionService:GetTagged("PTKTorch") do
+		addTorchParticles(flame)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKTorch"):Connect(addTorchParticles)
+	task.spawn(function()
+		local world = workspace:WaitForChild("World")
+		local interact = world:WaitForChild("Interactables")
+		for _, name in { "ExtractionPad", "PosternPad" } do
+			local pad = interact:WaitForChild(name, 10)
+			if pad then
+				addShimmer(pad)
+			end
+		end
+	end)
+
 	applyGraphics()
 	ClientSettings.Changed:Connect(function(key)
 		if key == "GraphicsLow" then
@@ -298,8 +461,18 @@ function WorldFXController.Init()
 		end
 	end)
 
+	Net.Event("Notify").OnClientEvent:Connect(function(data)
+		if data.Kind == "room" and data.Text then
+			setRoomAmbience(data.Text)
+		end
+	end)
+
 	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
 		setLid(state.ChestOpened == true)
+		local alarm = state.RunState == "InDanger" and state.ChestOpened == true
+		for _, e in shimmers do
+			e.Rate = if alarm then VFX.ShimmerRateAlarm else VFX.ShimmerRate
+		end
 		trophyCounts.captain = state.CaptainKills or 0
 		refreshTrophies()
 	end)

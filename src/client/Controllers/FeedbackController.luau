@@ -235,15 +235,61 @@ local function makeSpark()
 	return { Part = part, Emitter = emitter }
 end
 
+-- A soft puff of dust alongside the sparks (stylised, no gore, §74).
+local function makePuff(part: BasePart): ParticleEmitter
+	local puff = Instance.new("ParticleEmitter")
+	puff.Name = "Puff"
+	puff.Rate = 0
+	puff.Lifetime = NumberRange.new(0.35, 0.6)
+	puff.Speed = NumberRange.new(3, 7)
+	puff.SpreadAngle = Vector2.new(180, 180)
+	puff.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(1, 2.2),
+	})
+	puff.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.6),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	puff.Color = ColorSequence.new(Palette.stone)
+	puff.LightEmission = 0.1
+	puff.Drag = 3
+	puff.Parent = part
+	return puff
+end
+
 local function sparks(position: Vector3, count: number, color: Color3)
 	if #sparkPool < SPARK_POOL then
-		table.insert(sparkPool, makeSpark())
+		local spark = makeSpark()
+		makePuff(spark.Part)
+		table.insert(sparkPool, spark)
 	end
 	sparkIndex = sparkIndex % #sparkPool + 1
 	local spark = sparkPool[sparkIndex]
 	spark.Part.CFrame = CFrame.new(position)
 	spark.Emitter.Color = ColorSequence.new(color)
 	spark.Emitter:Emit(count)
+	local puff = spark.Part:FindFirstChild("Puff")
+	if puff and puff:IsA("ParticleEmitter") then
+		puff:Emit(GameConfig.VFX.PuffCount)
+	end
+end
+
+-- A boss impact shakes everyone near it (K3), through the reduced-shake setting.
+local function bossImpact(position: Vector3?, strength: number)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not position or not root or not root:IsA("BasePart") then
+		return
+	end
+	local VFX = GameConfig.VFX
+	local d = (root.Position - position).Magnitude
+	local falloff = 1
+		- math.clamp((d - VFX.ImpactNearRange) / (VFX.ImpactFarRange - VFX.ImpactNearRange), 0, 1)
+	if falloff <= 0 then
+		return
+	end
+	cameraKick(strength * falloff)
 end
 
 -- The killing blow: the enemy flashes white and fades. Unmistakable with the sound off.
@@ -398,12 +444,20 @@ function FeedbackController.Init()
 			FeedbackController.SetMusic("bossMusic")
 			playSound("bossRoar", 0.8)
 		elseif data.Kind == "bossPhase" then
-			-- The moment (G1): a flash, a hard camera push, the sting.
+			-- The moment (G1): a flash, a hard camera push, a burst at his feet, the sting.
 			screenFlash(Palette.ember, GameConfig.Captain.PhaseFlashTime)
 			cameraKick(GameConfig.Captain.PhaseKick)
 			HitStop.Freeze(FEEL.HeavyHitStopTime)
+			if typeof(data.Position) == "Vector3" then
+				sparks(data.Position, GameConfig.VFX.PhaseBurst, Palette.ember)
+			end
 			playSound("phaseTransition", 1)
 			playSound("bossRoar", 0.9)
+		elseif data.Kind == "bossImpact" then
+			bossImpact(data.Position, tonumber(data.Strength) or FEEL.KickHeavyTaken)
+			if typeof(data.Position) == "Vector3" then
+				sparks(data.Position, FEEL.SparkCountHeavy, Palette.stone)
+			end
 		elseif data.Kind == "bossDefeated" or data.Kind == "bossReset" then
 			FeedbackController.SetMusic(nil)
 		end

@@ -75,6 +75,12 @@ local GameConfig = {
 		HeavyPoiseMultiplier = 1.6,
 		HeavyReachBonus = 1, -- studs added to the weapon's reach on a heavy
 		HeavyAfterLightFraction = 0.5, -- a heavy can't land sooner than this share of the light cooldown
+		-- Forward magnetism (§11 "no precision aim required for melee", K3 soft target
+		-- assist): if nothing is in the swing box but an enemy is within reach and inside
+		-- this half-angle of the facing, the box is tested toward it instead. Server-side,
+		-- so phones and mice get the same help.
+		AssistAngle = 50, -- degrees either side of the facing
+		AssistReachFactor = 1.1,
 		-- A light hit that doesn't break poise still rocks an enemy that isn't mid-attack by
 		-- this much (E8 "a real flinch on light hits").
 		FlinchKnockback = 6,
@@ -107,6 +113,59 @@ local GameConfig = {
 	-- ── Rooms (RoomService) ─────────────────────────────────────
 	Rooms = {
 		CheckInterval = 0.4, -- seconds between room checks (not every frame, §46)
+		-- Per-room lighting notes (K2): the client tweens Lighting.Ambient and OutdoorAmbient
+		-- to these on entry. Neutrals only shift; functional colours never (art §3).
+		AmbienceTime = 1.2,
+		Ambience = {
+			["THE CELLS"] = { Ambient = Color3.fromRGB(34, 36, 46), Outdoor = Color3.fromRGB(70, 74, 90) },
+			["THE GUARD ROOM"] = {
+				Ambient = Color3.fromRGB(52, 42, 38),
+				Outdoor = Color3.fromRGB(110, 90, 80),
+			},
+			["THE LONG HALL"] = {
+				Ambient = Color3.fromRGB(46, 44, 50),
+				Outdoor = Color3.fromRGB(120, 105, 90),
+			},
+			["THE KITCHENS"] = { Ambient = Color3.fromRGB(56, 44, 34), Outdoor = Color3.fromRGB(120, 95, 70) },
+			["THE BARRACKS"] = { Ambient = Color3.fromRGB(28, 28, 34), Outdoor = Color3.fromRGB(60, 60, 70) },
+			["THE VAULT"] = { Ambient = Color3.fromRGB(52, 48, 40), Outdoor = Color3.fromRGB(130, 115, 85) },
+			["THE CHAPEL"] = { Ambient = Color3.fromRGB(50, 42, 36), Outdoor = Color3.fromRGB(110, 95, 85) },
+			["THE POSTERN"] = {
+				Ambient = Color3.fromRGB(44, 46, 52),
+				Outdoor = Color3.fromRGB(100, 104, 120),
+			},
+			["BRONN'S HALL"] = { Ambient = Color3.fromRGB(56, 40, 40), Outdoor = Color3.fromRGB(120, 85, 80) },
+			["THE SEWERS"] = { Ambient = Color3.fromRGB(26, 30, 32), Outdoor = Color3.fromRGB(55, 65, 65) },
+		},
+	},
+
+	-- ── VFX (K1; all ParticleEmitter, Beam, Trail, Highlight: no imported assets) ──
+	VFX = {
+		-- Weapon trails during swings, coloured by rarity.
+		TrailTime = 0.45, -- seconds the trail stays enabled after a swing starts
+		TrailLifetime = 0.16,
+		TrailWidth = 1,
+		-- Hit puffs (stylised dust, no gore, §74) emitted with the sparks.
+		PuffCount = 4,
+		-- Dust motes in light shafts; torch embers and smoke; the extraction shimmer.
+		MoteRate = 2.5,
+		EmberRate = 3,
+		SmokeRate = 1.2,
+		ShimmerRate = 6,
+		ShimmerRateAlarm = 18,
+		-- Chest-opening burst and Bronn's phase burst.
+		ChestBurst = 40,
+		PhaseBurst = 60,
+		-- Loot beams on the floor: height and width by rarity tier (Common..Mythic).
+		BeamHeight = 14,
+		BeamWidth = { 0.5, 0.6, 0.9, 1.1, 1.4, 1.8 },
+		-- Boss impacts shake nearby players: full strength inside this range, fading to zero
+		-- at ImpactFarRange, through the reduced-shake setting.
+		ImpactNearRange = 14,
+		ImpactFarRange = 50,
+		-- Footsteps (K4): seconds per stride at walking speed, and the hook's volume.
+		StrideInterval = 0.38,
+		FootstepVolume = 0.35,
 	},
 
 	-- ── Environmental interaction (EnvironmentService; H4) ──────
@@ -246,9 +305,11 @@ local GameConfig = {
 		-- Boss death (G3): the frame of the final blow holds this long before the body goes
 		-- and the reward drops. The client stretches its hit-stop to match.
 		DeathHold = 1.4,
-		-- Client: the phase transition's screen flash and camera push.
+		-- Client: the phase transition's screen flash and camera push, and how hard each
+		-- landed blow shakes nearby players (times the attack's DamageMultiplier).
 		PhaseFlashTime = 0.45,
 		PhaseKick = 4,
+		ImpactKick = 1.6,
 		ChargeSpeed = 48, -- studs/s during the dash
 		-- He only charges a target at least this far away, so it punishes kiting rather than
 		-- every step back from a Cleave.

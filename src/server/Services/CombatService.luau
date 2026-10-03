@@ -102,8 +102,45 @@ end
 -- Everything inside the swing volume (the weapon's reach deep, the configured cross-section,
 -- in front of the server's copy of the character): breakables break, enemies take `damage`
 -- with `info`. Returns the number of enemies hit.
+-- Forward magnetism (§11): the facing to test from. The character's own, unless nothing is
+-- ahead and an enemy stands within reach inside the assist angle, in which case the swing
+-- turns toward it. The box's size never changes; only where it points.
+local function assistedFacing(root: BasePart, reach: number): CFrame
+	local C = GameConfig.Combat
+	local origin = root.CFrame
+	local look = Vector3.new(origin.LookVector.X, 0, origin.LookVector.Z)
+	if look.Magnitude < 0.05 then
+		return origin
+	end
+	look = look.Unit
+	local cosLimit = math.cos(math.rad(C.AssistAngle))
+	local best: Vector3? = nil
+	local bestDistance = math.huge
+	for model, record in ctx.EnemyService.GetActive() do
+		local enemyRoot = model.PrimaryPart
+		if enemyRoot and record.State ~= "Dead" then
+			local to = enemyRoot.Position - root.Position
+			local flat = Vector3.new(to.X, 0, to.Z)
+			local d = flat.Magnitude
+			if
+				d > 0.05
+				and d <= reach * C.AssistReachFactor
+				and flat.Unit:Dot(look) >= cosLimit
+				and d < bestDistance
+			then
+				best, bestDistance = flat.Unit, d
+			end
+		end
+	end
+	if not best then
+		return origin
+	end
+	return CFrame.lookAt(root.Position, root.Position + best)
+end
+
 local function strike(player: Player, root: BasePart, reach: number, damage: number, info): number
-	local swingCF = root.CFrame * CFrame.new(0, 0, -reach / 2)
+	local facing = assistedFacing(root, reach)
+	local swingCF = facing * CFrame.new(0, 0, -reach / 2)
 	local swingSize = Vector3.new(GameConfig.Combat.Width, GameConfig.Combat.Height, reach)
 
 	-- Only enemy parts and breakables can be hit, so the query is limited to those folders.
@@ -358,6 +395,33 @@ function CombatService.EquipVisual(player: Player)
 	grip.Part1 = blade
 	grip.C0 = gripOffset
 	grip.Parent = blade
+
+	-- The swing trail (K1), coloured by rarity, from hilt to tip. Server-made so every
+	-- client has it; clients enable it for the swing (PlayerAnimController).
+	local VFX = GameConfig.VFX
+	local tip = Instance.new("Attachment")
+	tip.Name = "TrailTip"
+	tip.Position = Vector3.new(0, -blade.Size.Y / 2, 0)
+	tip.Parent = blade
+	local hilt = Instance.new("Attachment")
+	hilt.Name = "TrailHilt"
+	hilt.Position = Vector3.new(0, blade.Size.Y * 0.2, 0)
+	hilt.Parent = blade
+	local trail = Instance.new("Trail")
+	trail.Name = "SwingTrail"
+	trail.Attachment0 = hilt
+	trail.Attachment1 = tip
+	trail.Color = ColorSequence.new(WeaponConfig.RarityColors[weapon.Rarity] or Color3.new(1, 1, 1))
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.2),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.Lifetime = VFX.TrailLifetime
+	trail.WidthScale = NumberSequence.new(VFX.TrailWidth)
+	trail.LightEmission = 0.6
+	trail.FaceCamera = true
+	trail.Enabled = false
+	trail.Parent = blade
 end
 
 return CombatService
