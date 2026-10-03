@@ -12,9 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version must match the `luau` pin in rokit.toml so CI and local sweeps agree.
       - name: Fetch Luau toolchain
+        env:
+          LUAU_VERSION: "0.733"
         run: |
-          curl -sL -o luau.zip https://github.com/luau-lang/luau/releases/latest/download/luau-ubuntu.zip
+          curl -fsSL -o luau.zip "https://github.com/luau-lang/luau/releases/download/${LUAU_VERSION}/luau-ubuntu.zip"
           unzip -q luau.zip
           chmod +x luau-compile
 
@@ -39,5 +42,6 @@ jobs:
       - uses: JohnnyMorganz/stylua-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          version: latest
+          # Must match the `stylua` pin in rokit.toml.
+          version: 0.20.0
           args: --check src
