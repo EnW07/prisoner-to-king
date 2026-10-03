@@ -174,6 +174,16 @@ local GameConfig = {
 		WeaponUpgradeCost = 120,
 		WeaponUpgradeDamageBonus = 5,
 		WeaponUpgradeMaxLevel = 3,
+		MaxUpgradeRate = 2, -- UpgradeRequest per second before rate limiting
+	},
+
+	-- ── Pity / bad-luck protection (§13, I5) ───────────────────
+	-- Boss kills add Luck Charge; at FullCharge the next boss chest guarantees Rare or
+	-- better. Shown in the HUD as a bar with a number. The charge is persisted by the
+	-- SchemaVersion 2 migration (L5); until then it reads 0.
+	Pity = {
+		FullCharge = 100,
+		PerBossKill = 34, -- three Captain kills fill it
 	},
 
 	-- ── Enemies ─────────────────────────────────────────────────
@@ -318,6 +328,31 @@ local GameConfig = {
 		PopTime = 0.18, -- small "something changed" scale bounce
 		PopScale = 1.12,
 		PressScale = 0.9, -- touch button squash on press
+		-- Health bar (J2): bottom, right of the weapon slot. Fractions of the screen.
+		HealthX = 0.165,
+		HealthWidth = 0.24,
+		HealthHeight = 0.05,
+		HealthLowFraction = 0.3, -- at or below: `bleed`, the pulse and the vignette
+		HealthFlashTime = 0.25,
+		HealthGhostDelay = 0.2, -- the lost-health ghost waits this long, then catches up
+		HealthGhostTime = 0.45,
+		HealthPulsePeriod = 0.9,
+		VignetteDepth = 0.18, -- how far the edge glow reaches into the screen
+		VignetteMin = 0.55, -- transparency at the pulse's strongest...
+		VignetteMax = 0.9, -- ...and weakest
+		-- Objective arrow (J2): under the objective banner.
+		ArrowSize = 0.07,
+		ArrowY = 0.1,
+		ArrowHideDistance = 6, -- studs: this close, you are there
+		-- Enemy health bars (J2): pixel-sized, fading in on the first hit, out when disengaged.
+		EnemyBarPx = 150,
+		EnemyBarMaxDistance = 80,
+		EnemyBarHold = 4, -- seconds after the last hit before it fades
+		EnemyBarFade = 0.2,
+		-- WANTED (J2): pulses at the top level.
+		WantedPulsePeriod = 0.6,
+		-- The settings gear, top-right.
+		GearSize = 0.05,
 	},
 
 	-- ── Animation playback (EnemyAnimator; ids live in AnimationConfig) ──

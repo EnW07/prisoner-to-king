@@ -5,6 +5,7 @@
 
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local WeaponConfig = require(game.ReplicatedStorage.Shared.Config.WeaponConfig)
+local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 
 local EconomyService = {}
 local ctx
@@ -55,8 +56,7 @@ function EconomyService.GetDamageBonus(player: Player): number
 	if not profile then
 		return 0
 	end
-	return (profile.Castle.WeaponRackLevel or 0)
-		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponUpgradeDamageBonus
+	return (profile.Castle.WeaponRackLevel or 0) * GameConfig.Economy.WeaponUpgradeDamageBonus
 end
 
 function EconomyService.GetPlayerDamage(player: Player): number
@@ -94,6 +94,14 @@ function EconomyService.PushState(player: Player)
 		-- Trophies (G3). Meta.CaptainKills is written only once the SchemaVersion 2 migration
 		-- lands (Section L5); until then this reads 0 and the trophy stays hidden.
 		CaptainKills = profile.Meta.CaptainKills or 0,
+		-- Wanted level (L1; 0 until the wanted system lands) and the pity meter (I5; the
+		-- charge persists with the L5 migration, 0 until then).
+		Wanted = (ctx.Wanted and ctx.Wanted.Level(player)) or 0,
+		LuckCharge = profile.Meta.LuckCharge or 0,
+		LuckChargeMax = GameConfig.Pity.FullCharge,
+		LuckPerKill = GameConfig.Pity.PerBossKill,
+		-- Where the objective is, for the HUD arrow (J2). nil when there is nothing to point at.
+		ObjectiveTarget = ctx.RunState and ctx.RunState.ObjectiveTarget(player) or nil,
 
 		-- Per-player prompt state. Prompt.Enabled is replicated (shared), so the client gates
 		-- its own prompts from these fields instead. (M1 bugs 1/2/4/5.)
