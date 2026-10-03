@@ -216,7 +216,7 @@ directly into the system being built anyway.
 
 | # | Work | Who | Cost |
 |---|---|---|---|
-| 1 | Fix the three playtest bugs (loot falling through floor is P0) | Claude Code | — |
+| 1 | Fix the three playtest bugs: **P0** loot falls through the floor; **P1** "UPGRADE ARMORY" reads as armour/defence but grants damage; **P2** Bronn's 50% reinforcement survives his reset and keeps chasing | Claude Code | — |
 | 2 | **Phase 1 — UI overhaul** | Claude Code | free |
 | 3 | **Phase 2 — procedural animation** | Claude Code | free |
 | 4 | **Phase 3 — map size and geometry** | Claude Code | free |
