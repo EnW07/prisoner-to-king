@@ -18,6 +18,7 @@ local WeaponConfig = require(Shared:WaitForChild("Config"):WaitForChild("WeaponC
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 local HitStop = require(script.Parent:WaitForChild("HitStop"))
+local AnimationConfig = require(Shared:WaitForChild("Config"):WaitForChild("AnimationConfig"))
 
 local player = Players.LocalPlayer
 local CombatController = {}
@@ -81,6 +82,47 @@ local function swingJoint(joint: Instance, poses, token: number)
 	}, token)
 end
 
+-- A configured swing clip (AnimationConfig.Player.Swing), loaded once per Animator.
+-- Weak keys, so a dead character's Animator and track are collected.
+local swingTracks: { [Instance]: AnimationTrack | false } = setmetatable({}, { __mode = "k" }) :: any
+
+local function clipSwing(character: Model): boolean
+	local id = AnimationConfig.Player.Swing
+	if not id then
+		return false
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return false
+	end
+	local cached = swingTracks[animator]
+	if cached == nil then
+		local animation = Instance.new("Animation")
+		animation.AnimationId = id
+		local ok, result = pcall(function()
+			return animator:LoadAnimation(animation)
+		end)
+		if ok and result then
+			result.Priority = Enum.AnimationPriority.Action
+			cached = result
+		else
+			warn(
+				"[CombatController] Swing clip failed to load; using the procedural swing: "
+					.. tostring(result)
+			)
+			cached = false
+		end
+		swingTracks[animator] = cached
+	end
+	if cached then
+		-- No HitStop.Track: HitStop already freezes every playing track on this Animator.
+		cached:Play(0.05)
+		return true
+	end
+	return false
+end
+
 local function playSwing()
 	local character = player.Character
 	if not character then
@@ -88,6 +130,11 @@ local function playSwing()
 	end
 	swingToken += 1
 	local token = swingToken
+
+	-- An acquired swing animation replaces the procedural one with no other change.
+	if clipSwing(character) then
+		return
+	end
 
 	local upperArm = character:FindFirstChild("RightUpperArm")
 	local shoulder = upperArm and upperArm:FindFirstChild("RightShoulder")

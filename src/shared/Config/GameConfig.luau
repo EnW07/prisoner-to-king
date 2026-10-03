@@ -131,6 +131,19 @@ local GameConfig = {
 		PressScale = 0.9, -- touch button squash on press
 	},
 
+	-- ── Animation playback (EnemyAnimator; ids live in AnimationConfig) ──
+	Animation = {
+		FadeTime = 0.15, -- crossfade between locomotion clips
+		MoveThreshold = 0.5, -- studs/s: below this an enemy idles
+		RunThreshold = 13, -- studs/s: at or above this it runs instead of walks
+		WalkReferenceSpeed = 16, -- clip playback speed = actual speed / this
+		UpdateInterval = 0.15, -- seconds between locomotion updates (not every frame: §46)
+		-- Procedural enemy swing, used while AnimationConfig has no Attack clip.
+		EnemySwingWindUp = 0.12,
+		EnemySwingStrike = 0.08,
+		EnemySwingRecover = 0.3,
+	},
+
 	-- ── Feel (client): procedural animation, all TweenService ───
 	Feel = {
 		-- Player weapon swing, in phases. Total stays under the fastest weapon cooldown (0.6s).
