@@ -113,11 +113,17 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	)
 	rise.Completed:Connect(function()
 		if p.Parent then
-			TweenService:Create(
+			local fall = TweenService:Create(
 				p,
 				TweenInfo.new(cfg.HopTime / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 				{ CFrame = CFrame.new(landing) }
-			):Play()
+			)
+			fall.Completed:Connect(function()
+				-- Clients bob and spin it from here on, locally (WorldFXController).
+				-- The server never moves it again, so the two never fight.
+				p:SetAttribute("Landed", true)
+			end)
+			fall:Play()
 		end
 	end)
 	rise:Play()

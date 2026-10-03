@@ -40,8 +40,17 @@ local POSES = {
 	Overhead = CFrame.new(0.8, 6.5, 0) * CFrame.Angles(math.rad(10), 0, 0), -- raised straight up
 	Lowered = CFrame.new(1.6, -0.5, -3) * CFrame.Angles(math.rad(-80), 0, 0), -- levelled like a lance
 }
+-- Where each wind-up ends at the moment of impact. Same rig-geometry rule as POSES.
+local IMPACTS = {
+	Cleave = CFrame.new(-2.8, 0.5, -2.6) * CFrame.Angles(math.rad(-90), math.rad(70), 0), -- swept across
+	Overhead = CFrame.new(0.8, -1.2, -5) * CFrame.Angles(math.rad(-105), 0, 0), -- slammed into the floor
+	Lowered = CFrame.new(1.6, -0.5, -4.6) * CFrame.Angles(math.rad(-90), 0, 0), -- thrust home
+}
+-- Anticipation: after snapping into the wind-up he keeps drawing back, slowly, until the
+-- release. It reads as a coiled spring, and it tells you the blow is still coming.
+local ANTICIPATION_CREEP = CFrame.Angles(math.rad(-14), 0, 0)
 local POSE_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local SWING_TWEEN = TweenInfo.new(0.08, Enum.EasingStyle.Linear)
+local SWING_TWEEN = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 type Nameplate = { Fill: Frame, HealthText: TextLabel, Callout: TextLabel }
 
@@ -443,7 +452,20 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 
 	local marker = makeMarker(f, attack, origin, reach)
 	setTelegraph(f, attack.Name)
+	-- 1. Anticipation: snap into the wind-up, then keep drawing back until the release.
 	setPose(f, attack.Pose, POSE_TWEEN)
+	local creepTime = attack.WindUp - POSE_TWEEN.Time
+	if creepTime > 0 then
+		task.delay(POSE_TWEEN.Time, function()
+			if alive(f) and f.Busy then
+				TweenService:Create(
+					f.Grip,
+					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+					{ C0 = POSES[attack.Pose] * ANTICIPATION_CREEP }
+				):Play()
+			end
+		end)
+	end
 
 	task.wait(attack.WindUp)
 
@@ -451,20 +473,23 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 		local damage = math.floor(cfg.Damage * attack.DamageMultiplier + 0.5)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
-		setPose(f, "Rest", SWING_TWEEN)
+		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
+		TweenService:Create(f.Grip, SWING_TWEEN, { C0 = IMPACTS[attack.Pose] }):Play()
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
 		else
 			strike(f, attack, origin, damage)
 		end
-		task.wait(TUNE.StrikeFlashTime)
+		task.wait(TUNE.ImpactPause)
 	end
 	removeMarker(f, marker)
 
 	if not alive(f) then
 		return
 	end
-	-- Recovery: he stands still. This is the player's punish window.
+	-- 3. Recovery: a slow, heavy return to rest while he stands still. This is the
+	-- player's punish window. Timing is unchanged from before the animation pass.
+	setPose(f, "Rest", TweenInfo.new(attack.Recovery, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
 	task.wait(attack.Recovery)
 	if not alive(f) then
 		return

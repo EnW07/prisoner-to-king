@@ -20,6 +20,7 @@
 --
 --   HIDEOUT sits far away at z=400 (separate safe area, same place file — §77).
 
+local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
@@ -66,11 +67,17 @@ end
 local function torch(x: number, y: number, z: number, parent: Instance)
 	local p = box("Torch", x, y, z, 0.4, 1.2, 0.4, Color3.fromRGB(90, 60, 40), parent, Enum.Material.Wood)
 	p.CanCollide = false
+	-- A visible flame, so the light has a source. Clients flicker it (WorldFXController).
+	local flame = box("Flame", x, y + 0.9, z, 0.5, 0.7, 0.5, Palette.ember, parent, Enum.Material.Neon)
+	flame.CanCollide = false
+	flame.CanQuery = false
+	flame.CastShadow = false
 	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 170, 90)
+	light.Color = Palette.ember
 	light.Brightness = 2.4
 	light.Range = 26
-	light.Parent = p
+	light.Parent = flame
+	CollectionService:AddTag(flame, "PTKTorch")
 end
 
 local STONE = Color3.fromRGB(105, 105, 110)
@@ -202,8 +209,25 @@ function WorldBuilder.Build()
 	torch(99.5, 7, 8, props)
 	torch(99.5, 7, -8, props)
 
+	-- Base + separate lid, so the lid can hinge open. The lid is per-player visual state
+	-- (each run's chest is its own), so clients open it locally (WorldFXController); the
+	-- server never moves it.
 	local chest =
-		box("Chest", 80.5, 1.5, 8, 4, 3, 3, Color3.fromRGB(120, 85, 50), interact, Enum.Material.WoodPlanks)
+		box("Chest", 80.5, 1.1, 8, 4, 2.2, 3, Color3.fromRGB(120, 85, 50), interact, Enum.Material.WoodPlanks)
+	local chestLid = box(
+		"ChestLid",
+		80.5,
+		2.6,
+		8,
+		4.2,
+		0.8,
+		3.2,
+		Color3.fromRGB(120, 85, 50),
+		props,
+		Enum.Material.WoodPlanks
+	)
+	chestLid.CanCollide = false
+	CollectionService:AddTag(chestLid, "PTKChestLid")
 
 	-- ══ CAPTAIN'S HALL (M2) ════════════════════════════════════
 	box("HallFloor", 121.5, -0.5, 0, 41, 1, 30, Palette.pitch, zones)

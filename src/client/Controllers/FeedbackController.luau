@@ -16,6 +16,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
 local Palette = require(Shared:WaitForChild("Config"):WaitForChild("Palette"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local HitStop = require(script.Parent:WaitForChild("HitStop"))
+local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -112,12 +114,20 @@ function FeedbackController.Init()
 			-- Only show numbers for hits this player caused, to keep the screen readable.
 			if data.Attacker == player.UserId then
 				damageNumber(data.Position, data.Damage, UIStyle.TEXT)
-				cameraKick(0.7)
+				-- Hit-stop: a beat on every landed hit, a longer one on the kill.
+				HitStop.Freeze(
+					if data.Killed then GameConfig.Feel.HeavyHitStopTime else GameConfig.Feel.HitStopTime
+				)
+				cameraKick(if data.Killed then GameConfig.Feel.KickKill else GameConfig.Feel.KickHit)
 				playSound(if data.Killed then "kill" else "hit")
 			end
 		elseif data.Kind == "taken" then
 			damageNumber(data.Position, data.Damage, Palette.bleed) -- taken = danger
-			cameraKick(1.4)
+			local heavy = data.Damage >= GameConfig.Feel.HeavyHitDamage
+			if heavy then
+				HitStop.Freeze(GameConfig.Feel.HeavyHitStopTime) -- e.g. Bronn's CRUSHING BLOW
+			end
+			cameraKick(if heavy then GameConfig.Feel.KickHeavyTaken else GameConfig.Feel.KickTaken)
 			playSound("takeDamage")
 		end
 	end)

@@ -181,10 +181,14 @@ function CombatService.EquipVisual(player: Player)
 	p.CFrame = hand.CFrame * CFrame.new(0, -weapon.Model.Size.Y / 2, 0)
 	p.Parent = character
 
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = hand
-	weld.Part1 = p
-	weld.Parent = p
+	-- A Weld (not a WeldConstraint) named "Grip", so the client can tween its C0 for a
+	-- wrist snap on rigs where it can't swing the arm (R6). See CombatController.
+	local grip = Instance.new("Weld")
+	grip.Name = "Grip"
+	grip.Part0 = hand
+	grip.Part1 = p
+	grip.C0 = CFrame.new(0, -weapon.Model.Size.Y / 2, 0)
+	grip.Parent = p
 end
 
 return CombatService
