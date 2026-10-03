@@ -10,6 +10,11 @@
 --   • how much damage is dealt, from config + saved upgrades?
 --
 -- A client that says "I dealt 999999 damage" is not even given a field to say it in.
+--
+-- WEAPON IDENTITY (E6) is data: reach, combo chain, guard break, knockback, stagger bonus
+-- and the heavy multiplier come from WeaponConfig. Nothing here checks a weapon id.
+-- Three intents: AttackRequest (the light combo), HeavyRequest (hold and release),
+-- DashRequest (the i-frames). All zero arguments, all rate limited.
 
 local Players = game:GetService("Players")
 
@@ -23,16 +28,18 @@ local CombatService = {}
 local ctx
 local AttackRequest: RemoteEvent
 local DashRequest: RemoteEvent
+local HeavyRequest: RemoteEvent
 local Notify: RemoteEvent
 local CombatVisual: RemoteEvent
 
 local lastAttack: { [number]: number } = {}
--- Dash (E1): the server's own cooldown clock and the invincibility window it grants.
-local lastDash: { [number]: number } = {}
-local invulnerableUntil: { [number]: number } = {}
+local lastHeavy: { [number]: number } = {}
 -- Light combo stage per player, from the same rule the client predicts with
 -- (GameConfig.Animation.ComboWindow). The server's count is the one that matters (E3).
 local comboStage: { [number]: number } = {}
+-- Dash (E1): the server's own cooldown clock and the invincibility window it grants.
+local lastDash: { [number]: number } = {}
+local invulnerableUntil: { [number]: number } = {}
 
 function CombatService.Init(context)
 	ctx = context
@@ -47,83 +54,69 @@ function CombatService.Init(context)
 	DashRequest.OnServerEvent:Connect(function(player)
 		CombatService.HandleDash(player)
 	end)
+	HeavyRequest = Net.Event("HeavyRequest")
+	HeavyRequest.OnServerEvent:Connect(function(player)
+		CombatService.HandleHeavy(player)
+	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastAttack[player.UserId] = nil
 		comboStage[player.UserId] = nil
 		lastDash[player.UserId] = nil
+		lastHeavy[player.UserId] = nil
 		invulnerableUntil[player.UserId] = nil
 	end)
 end
 
-function CombatService.HandleAttack(player: Player)
-	-- 1. Rate limit before doing any work.
-	if not RateLimiter.Check(player, "Attack", GameConfig.Combat.MaxAttackRate) then
-		return
-	end
-
-	-- 2. Alive check.
+-- The alive, equipped attacker: character root, profile and weapon, or nils.
+local function attacker(player: Player): (BasePart?, any?, any?)
 	local character = player.Character
 	if not character then
-		return
+		return nil, nil, nil
 	end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not humanoid or not root or humanoid.Health <= 0 then
-		return
+		return nil, nil, nil
 	end
-
 	local profile = ctx.Data.Get(player)
 	if not profile then
-		return
+		return nil, nil, nil
 	end
-
-	-- 3. Cooldown, enforced from the equipped weapon's config — not from anything sent.
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId) or WeaponConfig.Get("fists")
-	local cooldown = (weapon :: any).AttackCooldown
-	local now = os.clock()
-	local last = lastAttack[player.UserId] or 0
-	if now - last < (cooldown - GameConfig.Combat.CooldownGrace) then
-		return
-	end
-	lastAttack[player.UserId] = now
+	return root, profile, weapon
+end
 
-	local stage = if now - last <= GameConfig.Animation.ComboWindow
-		then (comboStage[player.UserId] or 0) % 3 + 1
-		else 1
-	comboStage[player.UserId] = stage
-
-	-- A client's joint changes never replicate, so other players would see a frozen
-	-- attacker. Rebroadcast the validated swing; each other client plays the same move
-	-- on this character locally. The attacker already played its own on input.
-	local visual = { UserId = player.UserId, Key = "Light" .. stage, Weight = (weapon :: any).Weight }
+-- Tell every other client to play this move on the attacker's character. A client's joint
+-- changes never replicate, so without this other players would see a frozen attacker.
+-- The attacker already played its own on input.
+local function broadcast(player: Player, key: string, weapon)
+	local visual = { UserId = player.UserId, Key = key, Weight = (weapon :: any).Weight }
 	for _, other in Players:GetPlayers() do
 		if other ~= player then
 			CombatVisual:FireClient(other, visual)
 		end
 	end
+end
 
-	-- 4. Server-side hit detection, from the server's position for this character.
-	local range = GameConfig.Combat.Range
-	local swingCF = root.CFrame * CFrame.new(0, 0, -range / 2)
-	local swingSize = Vector3.new(GameConfig.Combat.Width, GameConfig.Combat.Height, range)
+-- Everything inside the swing volume (the weapon's reach deep, the configured cross-section,
+-- in front of the server's copy of the character): breakables break, enemies take `damage`
+-- with `info`. Returns the number of enemies hit.
+local function strike(player: Player, root: BasePart, reach: number, damage: number, info): number
+	local swingCF = root.CFrame * CFrame.new(0, 0, -reach / 2)
+	local swingSize = Vector3.new(GameConfig.Combat.Width, GameConfig.Combat.Height, reach)
 
-	-- Only enemy parts can be hit, so the query is limited to the Enemies folder. That also
-	-- excludes the attacker. An R15 enemy is ~15+ parts plus costume, so the old 24-part
-	-- cap could fill up on one guard and hide a second. The cap is now sized for several
-	-- full rigs. MaxTargetsPerSwing still counts distinct enemies (models), not parts.
+	-- Only enemy parts and breakables can be hit, so the query is limited to those folders.
+	-- That also excludes the attacker. An R15 enemy is ~15+ parts plus costume, so the cap
+	-- is sized for several full rigs. MaxTargetsPerSwing counts distinct enemies (models).
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { ctx.EnemyService.GetContainer(), ctx.Environment.GetBreakables() }
 	params.MaxParts = GameConfig.Combat.OverlapMaxParts
-
 	local parts = workspace:GetPartBoundsInBox(swingCF, swingSize, params)
 
-	local damage = ctx.Economy.GetPlayerDamage(player)
-	local finisher = stage == GameConfig.Combat.FinisherStage
 	local hitModels: { [Model]: boolean } = {}
 	local hits = 0
-
 	for _, hitPart in parts do
 		if hits >= GameConfig.Combat.MaxTargetsPerSwing then
 			break
@@ -138,18 +131,99 @@ function CombatService.HandleAttack(player: Player)
 			hitModels[model] = true
 			-- The contact point is the overlapped part itself (a limb, a torso), not the
 			-- enemy's centre, so sparks and numbers land where the blade did (E8).
-			local info: any = {
-				Contact = hitPart.Position,
-				Knockback = if finisher then GameConfig.Combat.FinisherKnockback else 0,
-				Finisher = finisher,
-			}
-			if ctx.EnemyService.ApplyDamage(model, damage, player, info) then
+			local perHit = table.clone(info)
+			perHit.Contact = hitPart.Position
+			if ctx.EnemyService.ApplyDamage(model, damage, player, perHit) then
 				hits += 1
 			end
 		end
 	end
+	return hits
+end
+
+-- The light attack (E3): the combo chain is the weapon's; the last stage is the finisher.
+function CombatService.HandleAttack(player: Player)
+	-- 1. Rate limit before doing any work.
+	if not RateLimiter.Check(player, "Attack", GameConfig.Combat.MaxAttackRate) then
+		return
+	end
+
+	-- 2. Alive, with a profile and a weapon.
+	local root, _profile, weapon = attacker(player)
+	if not root or not weapon then
+		return
+	end
+
+	-- 3. Cooldown, enforced from the equipped weapon's config — not from anything sent.
+	local cooldown = weapon.AttackCooldown
+	local now = os.clock()
+	local last = lastAttack[player.UserId] or 0
+	if now - last < (cooldown - GameConfig.Combat.CooldownGrace) then
+		return
+	end
+	lastAttack[player.UserId] = now
+
+	-- The combo stage, from the weapon's own chain length and the same window the client
+	-- predicts with. Pausing longer than the window starts the chain over.
+	local chain: { string } = weapon.Combo
+	local stage = if now - last <= GameConfig.Animation.ComboWindow
+		then (comboStage[player.UserId] or 0) % #chain + 1
+		else 1
+	comboStage[player.UserId] = stage
+	local finisher = #chain >= 2 and stage == #chain
+	broadcast(player, chain[stage], weapon)
+
+	-- 4. Server-side hit detection, with the weapon's identity as data (E6).
+	local stageDamage = GameConfig.Combat.ComboDamage[stage] or 1
+	local damage = math.floor(ctx.Economy.GetPlayerDamage(player) * stageDamage + 0.5)
+	local info = {
+		Knockback = weapon.KnockbackForce + (if finisher then GameConfig.Combat.FinisherKnockback else 0),
+		Finisher = finisher,
+		GuardBreak = weapon.GuardBreak,
+		StaggerBonus = weapon.StaggerBonus,
+	}
+	local hits = strike(player, root, weapon.Reach, damage, info)
 
 	-- Tell the attacker their swing resolved even on a whiff, so feedback never feels dead.
+	Notify:FireClient(player, { Text = "", Kind = if hits > 0 then "hit" else "swing" })
+end
+
+-- The heavy attack (E2): the client held the input and released. Slower, more damage,
+-- breaks guard, knocks back, hits poise harder, and resets the combo. Its own per-weapon
+-- cooldown, and it can't land right on top of a light swing. It is the specific answer to
+-- the shield guard (F3).
+function CombatService.HandleHeavy(player: Player)
+	if not RateLimiter.Check(player, "Attack", GameConfig.Combat.MaxAttackRate) then
+		return
+	end
+	local root, _profile, weapon = attacker(player)
+	if not root or not weapon then
+		return
+	end
+	local now = os.clock()
+	local C = GameConfig.Combat
+	if now - (lastHeavy[player.UserId] or 0) < weapon.HeavyCooldown - C.CooldownGrace then
+		return
+	end
+	if now - (lastAttack[player.UserId] or 0) < weapon.AttackCooldown * C.HeavyAfterLightFraction then
+		return
+	end
+	lastHeavy[player.UserId] = now
+	lastAttack[player.UserId] = now
+	comboStage[player.UserId] = 0
+	broadcast(player, "Heavy", weapon)
+	ctx.Analytics.Log(player, "HeavyUsed", 1, { weapon = weapon.Name })
+
+	local damage = math.floor(ctx.Economy.GetPlayerDamage(player) * weapon.HeavyDamageMultiplier + 0.5)
+	local info = {
+		Knockback = weapon.KnockbackForce + C.HeavyKnockback,
+		Finisher = true,
+		Heavy = true,
+		GuardBreak = true,
+		PoiseDamage = damage * C.HeavyPoiseMultiplier,
+		StaggerBonus = weapon.StaggerBonus,
+	}
+	local hits = strike(player, root, weapon.Reach + C.HeavyReachBonus, damage, info)
 	Notify:FireClient(player, { Text = "", Kind = if hits > 0 then "hit" else "swing" })
 end
 
@@ -172,17 +246,14 @@ function CombatService.HandleDash(player: Player)
 		return
 	end
 	lastDash[player.UserId] = now
-	invulnerableUntil[player.UserId] = now + GameConfig.Dash.IFrameWindow
-	ctx.Analytics.Log(player, "DashUsed", 1)
-
+	-- The window is the dash's, plus the weapon's (a dagger slips through anything, E6).
 	local profile = ctx.Data.Get(player)
-	local weapon = profile and WeaponConfig.Get(profile.Equipped.WeaponId)
-	local visual = { UserId = player.UserId, Key = "Dash", Weight = weapon and weapon.Weight or "Medium" }
-	for _, other in Players:GetPlayers() do
-		if other ~= player then
-			CombatVisual:FireClient(other, visual)
-		end
-	end
+	local weapon = (profile and WeaponConfig.Get(profile.Equipped.WeaponId)) or WeaponConfig.Get("fists")
+	invulnerableUntil[player.UserId] = now
+		+ GameConfig.Dash.IFrameWindow
+		+ ((weapon :: any).DashIFrameBonus or 0)
+	ctx.Analytics.Log(player, "DashUsed", 1)
+	broadcast(player, "Dash", weapon)
 end
 
 -- True while the player's last granted dash still protects them.
@@ -221,6 +292,9 @@ function CombatService.GiveWeapon(player: Player, weaponId: string, autoEquip: b
 
 	ctx.Analytics.Log(player, "FirstWeaponPicked", 1, { weapon = weaponId })
 	ctx.Analytics.Log(player, "WeaponAcquired", 1, { weapon = weaponId })
+	if weapon.Rarity ~= "Common" and weapon.Rarity ~= "Uncommon" then
+		ctx.Analytics.Log(player, "RareObtained", 1, { weapon = weaponId, rarity = weapon.Rarity })
+	end
 
 	Notify:FireClient(player, {
 		Text = ("%s  ·  %s"):format(weapon.Name:upper(), weapon.Rarity:upper()),

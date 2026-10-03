@@ -735,14 +735,14 @@ end
 
 -- Poise broken (E7): the current attack is cut, the enemy can't act for StaggerDuration,
 -- and poise refills so a stagger can't chain into another. Visible: the Stagger move.
-function EnemyService.Stagger(record, attacker: Player?)
+function EnemyService.Stagger(record, attacker: Player?, extra: number?)
 	local cfg = record.Config
 	local humanoid: Humanoid = record.Humanoid
 	local root = record.Model.PrimaryPart :: BasePart?
 	if record.State == "Dead" or humanoid.Health <= 0 or not root then
 		return
 	end
-	local duration = cfg.StaggerDuration or 1
+	local duration = (cfg.StaggerDuration or 1) + (extra or 0)
 	local now = os.clock()
 	record.StaggeredUntil = now + duration
 	record.Poise = cfg.Poise or 0
@@ -781,6 +781,7 @@ export type HitInfo = {
 	Heavy: boolean?, -- a heavy attack (E2): the only thing that moves a brute's poise
 	GuardBreak: boolean?, -- breaks a shield guard's block (heavy attacks, axes)
 	PoiseDamage: number?, -- defaults to the damage dealt
+	StaggerBonus: number?, -- seconds added to the stagger this hit causes (hammers stun)
 }
 
 -- Is the attacker in front of the enemy, inside its shield arc?
@@ -845,7 +846,7 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 	-- Heavy attacks and guard-breaking weapons break it open; so does attacking from behind.
 	if cfg.Shield and now >= record.StaggeredUntil and frontal(record, from, cfg.Shield.Arc) then
 		if hit.GuardBreak then
-			EnemyService.Stagger(record, attacker) -- guard broken: open
+			EnemyService.Stagger(record, attacker, hit.StaggerBonus) -- guard broken: open
 		else
 			record.LastHitAt = now
 			if not record.Attacking then
@@ -876,7 +877,7 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		end
 		record.Poise -= poiseDamage
 		if record.Poise <= 0 and now >= record.StaggeredUntil then
-			EnemyService.Stagger(record, attacker)
+			EnemyService.Stagger(record, attacker, hit.StaggerBonus)
 			staggered = true
 		end
 	end
@@ -898,6 +899,7 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		Attacker = attacker.UserId,
 		Target = model,
 		Finisher = hit.Finisher == true,
+		Heavy = hit.Heavy == true,
 		Staggered = staggered,
 	})
 

@@ -114,6 +114,46 @@ function WeaponModel.Build(weaponId: string): Model?
 			Palette.stone,
 			Enum.Material.Metal
 		)
+	elseif class == "Axe" then
+		-- A haft with a one-sided head near the business end (-Y is the tip).
+		piece(
+			model,
+			blade,
+			"AxeHead",
+			Vector3.new(width * 5, length * 0.32, math.max(0.25, size.Z * 0.9)),
+			CFrame.new(width * 2.2, -length / 2 + length * 0.2, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+		piece(
+			model,
+			blade,
+			"AxeBit",
+			Vector3.new(width * 1.2, length * 0.4, math.max(0.2, size.Z * 0.7)),
+			CFrame.new(width * 4.6, -length / 2 + length * 0.2, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+	elseif class == "Spear" then
+		-- A long shaft with a leaf head at the tip and a butt cap at the hand.
+		piece(
+			model,
+			blade,
+			"Spearhead",
+			Vector3.new(width * 2.2, length * 0.16, math.max(0.2, size.Z * 0.8)),
+			CFrame.new(0, -length / 2 - length * 0.07, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+		piece(
+			model,
+			blade,
+			"ButtCap",
+			Vector3.new(width * 1.4, width * 1.4, width * 1.4),
+			CFrame.new(0, length / 2, 0),
+			Palette.pitch,
+			Enum.Material.Metal
+		)
 	elseif class == "Dagger" then
 		-- It's a spoon: a bowl at the business end.
 		piece(

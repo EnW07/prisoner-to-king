@@ -44,6 +44,7 @@ local PoseAnimator = {}
 export type Durations = { Wind: number?, Strike: number?, Recover: number? }
 export type Options = {
 	Durations: Durations?, -- per-phase durations to fill; otherwise authored x weight
+	Only: { string }?, -- play just these phases (e.g. {"Wind"} to hold a wind-up)
 	Weight: string?, -- AnimationConfig.Weights key; default "Medium"
 	OnPhase: ((phase: string) -> ())?, -- called as each phase begins
 	OnDone: (() -> ())?, -- called when the last step completes (not on cancel)
@@ -122,9 +123,16 @@ local function plan(move, options: Options): { any }
 	local weight = weightOf(options.Weight)
 	local durations = options.Durations or {}
 	local steps = {}
+	local only: { [string]: boolean }? = nil
+	if options.Only then
+		only = {}
+		for _, phase in options.Only do
+			(only :: any)[phase] = true
+		end
+	end
 	for _, phase in PHASES do
 		local list = move[phase]
-		if list then
+		if list and (not only or only[phase]) then
 			-- A step spans its slowest joint (time + its delay) plus any hold. The phase's
 			-- authored span is the sum; delays scale with the rest so a phase filled with a
 			-- caller's duration lasts exactly that long (the strike arc must land on time).

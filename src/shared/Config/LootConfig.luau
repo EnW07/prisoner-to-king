@@ -9,19 +9,23 @@ export type Guaranteed = { Kind: string, Id: string }
 local LootConfig = {}
 
 LootConfig.Tables = {
+	-- Guards sometimes drop what they carry (L2: the Guard Sword as a low-weight drop from
+	-- ordinary guards; spearmen, their spear).
 	sleepy_guard = {
 		Rolls = 1,
 		Entries = {
-			{ Kind = "None", Weight = 70 },
+			{ Kind = "None", Weight = 66 },
 			{ Kind = "Gold", Weight = 30, Min = 5, Max = 12 },
+			{ Kind = "Weapon", Id = "guard_sword", Weight = 4 },
 		} :: { Entry },
 	},
 
 	alarm_guard = {
 		Rolls = 1,
 		Entries = {
-			{ Kind = "None", Weight = 55 },
+			{ Kind = "None", Weight = 49 },
 			{ Kind = "Gold", Weight = 45, Min = 8, Max = 20 },
+			{ Kind = "Weapon", Id = "guard_spear", Weight = 6 },
 		} :: { Entry },
 	},
 
@@ -76,16 +80,18 @@ LootConfig.Tables = {
 	barrel = {
 		Rolls = 1,
 		Entries = {
-			{ Kind = "None", Weight = 45 },
-			{ Kind = "Gold", Weight = 55, Min = 5, Max = 14 },
+			{ Kind = "None", Weight = 44 },
+			{ Kind = "Gold", Weight = 54, Min = 5, Max = 14 },
+			{ Kind = "Weapon", Id = "woodcutter_axe", Weight = 2 }, -- the kitchens keep one somewhere
 		} :: { Entry },
 	},
 	-- The barracks chest (H1 §5): higher risk, better loot, and it rings the alarm.
 	barracks_chest = {
 		Rolls = 2,
 		Entries = {
-			{ Kind = "Gold", Weight = 70, Min = 30, Max = 60 },
-			{ Kind = "Weapon", Id = "guard_sword", Weight = 30 },
+			{ Kind = "Gold", Weight = 60, Min = 30, Max = 60 },
+			{ Kind = "Weapon", Id = "guard_sword", Weight = 20 },
+			{ Kind = "Weapon", Id = "woodcutter_axe", Weight = 20 },
 		} :: { Entry },
 	},
 
@@ -97,8 +103,9 @@ LootConfig.Tables = {
 			{ Kind = "Weapon", Id = "guard_sword" },
 		} :: { Guaranteed },
 		Entries = {
-			{ Kind = "None", Weight = 40 },
-			{ Kind = "Gold", Weight = 60, Min = 20, Max = 40 },
+			{ Kind = "None", Weight = 30 },
+			{ Kind = "Gold", Weight = 55, Min = 20, Max = 40 },
+			{ Kind = "Weapon", Id = "captain_greatsword", Weight = 15 }, -- the Rare chance (M2 item 2)
 		} :: { Entry },
 	},
 }
@@ -110,9 +117,10 @@ LootConfig.ChestTable = "chest"
 LootConfig.Tables.chest = {
 	Rolls = 1,
 	Entries = {
-		{ Kind = "None", Weight = 30 },
-		{ Kind = "Gold", Weight = 62, Min = 15, Max = 35 },
-		{ Kind = "Weapon", Id = "guard_sword", Weight = 8 },
+		{ Kind = "None", Weight = 28 },
+		{ Kind = "Gold", Weight = 60, Min = 15, Max = 35 },
+		{ Kind = "Weapon", Id = "guard_sword", Weight = 7 },
+		{ Kind = "Weapon", Id = "woodcutter_axe", Weight = 5 },
 	} :: { Entry },
 }
 
