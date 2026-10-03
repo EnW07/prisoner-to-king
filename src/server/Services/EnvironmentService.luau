@@ -101,6 +101,9 @@ function EnvironmentService.Break(part: BasePart, player: Player?): boolean
 	if lootTable and player then
 		ctx.LootService.DropTable(lootTable, part.Position + Vector3.new(0, 1, 0), nil)
 		ctx.Analytics.Log(player, "BreakableBroken", 1, { kind = kind })
+		if ctx.Wanted then
+			ctx.Wanted.AddHeat(player, GameConfig.Wanted.HeatBreak, "break")
+		end
 	end
 	-- Hide it and bring it back later: a shared castle restocks its clutter.
 	local children = {}

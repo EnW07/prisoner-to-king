@@ -533,7 +533,7 @@ local function enterPhaseTwo(f: Fight)
 	-- The reinforcement, called during the roar.
 	dismissReinforcements()
 	local guard = ctx.EnemyService.Spawn(TUNE.ReinforcementEnemy, world.CaptainReinforcementSpawn, {
-		Respawn = false,
+		SpawnCFrame = world.CaptainReinforcementSpawn,
 	})
 	if guard then
 		table.insert(reinforcements, guard)
@@ -768,7 +768,7 @@ function CaptainService.Spawn()
 	-- A guard from Bronn's previous life must not carry into this one.
 	dismissReinforcements()
 	local record = ctx.EnemyService.Spawn(ENEMY_ID, world.CaptainSpawn, {
-		Respawn = false, -- respawned here, on GameConfig.Captain.RespawnDelay
+		-- Respawned here, on GameConfig.Captain.RespawnDelay: the one enemy who comes back.
 		SpawnCFrame = world.CaptainSpawn,
 		Brain = think,
 		OnDamaged = onDamaged,

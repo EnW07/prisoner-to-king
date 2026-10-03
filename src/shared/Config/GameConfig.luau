@@ -103,6 +103,48 @@ local GameConfig = {
 		FovTime = 0.35, -- seconds to settle back
 	},
 
+	-- ── Wanted (L1; §15) ────────────────────────────────────────
+	Wanted = {
+		MaxLevel = 3,
+		Thresholds = { 20, 50, 90 }, -- heat at which levels I, II, III begin
+		HeatCapFactor = 1.3, -- heat can't exceed the top threshold times this
+		HeatKill = 12,
+		HeatChest = 30,
+		HeatSeen = 6,
+		SeenHeatInterval = 5, -- seconds between "seen" heat ticks
+		HeatBreak = 2,
+		HeatBell = 45, -- the alarm bell: the voluntary way up
+		DecayDelay = 8, -- seconds unseen before heat starts to fall
+		DecayPerSecond = 1.5,
+		TickInterval = 1,
+		-- By level (index = level + 1): the gold multiplier on everything you loot, and the
+		-- seconds between reinforcements (0 = none) drawn from the pool for that level.
+		GoldMultiplier = { 1, 1.15, 1.35, 1.6 },
+		SpawnInterval = { 0, 25, 14, 9 },
+		SpawnEnemies = {
+			{},
+			{ "alarm_guard" },
+			{ "alarm_guard", "archer" },
+			{ "alarm_guard", "shield_guard", "archer" },
+		},
+		MaxReinforcements = 6, -- alive at once from this system, server-wide
+		MinSpawnDistance = 30, -- never from an entrance closer than this
+		HoundPackAt = 3, -- at this level every other arrival is a hound pack
+		HoundPackSize = 2,
+	},
+
+	-- ── Co-play (L3): the minimum that produces the signal, always additive ──
+	CoPlay = {
+		Window = 20, -- seconds: two extractions within it pay both players the bonus
+		Bonus = 60, -- flat gold, on top of everything; never a penalty for solo play
+		DownedEligibleRange = 45, -- a killing blow downs you instead if a friend is this close
+		DownedTime = 8, -- seconds to be revived before the death happens anyway
+		DownedHealth = 1,
+		ReviveRange = 8,
+		ReviveHold = 2.5,
+		RevivedHealthFraction = 0.4,
+	},
+
 	-- ── Poise (E7) ──────────────────────────────────────────────
 	Poise = {
 		RegenDelay = 1.5, -- seconds after the last hit before poise starts refilling
@@ -213,8 +255,10 @@ local GameConfig = {
 	-- ── Run / extraction ────────────────────────────────────────
 	Run = {
 		ExtractionChannelTime = 3, -- hold duration on the extraction pad
-		-- Fraction of UNSECURED gold lost on death. Equipped gear is never lost. (§14)
-		DeathUnsecuredLossPercent = 1.0,
+		-- Fraction of UNSECURED gold lost on death; the rest is banked. Equipped gear is
+		-- never lost. (§14; L4: §94 lists full loss as a way to kill the game with young
+		-- players.)
+		DeathUnsecuredLossPercent = 0.5,
 		AlarmGuardCount = 2,
 		-- Hounds reach the sewer this long after the alarm (F4: what makes carrying 500
 		-- unsecured gold to the exit frightening).
@@ -248,7 +292,8 @@ local GameConfig = {
 	-- ── Enemies ─────────────────────────────────────────────────
 	Enemy = {
 		ThinkInterval = 0.2, -- AI tick, NOT per-frame (§46)
-		RespawnDelay = 25,
+		-- (There is no RespawnDelay: guards you kill stay dead for the run. New guards arrive
+		-- through the wanted system, from entrances. L1.)
 		CorpseDespawn = 4, -- seconds a dead enemy lies there before it fades (Death.CorpseFadeTime)
 		LeashDistance = 90,
 		-- The attack cycle's strike area: a box in front of the enemy, along the facing it

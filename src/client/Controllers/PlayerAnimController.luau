@@ -249,6 +249,15 @@ function PlayerAnimController.Init()
 		end
 	end)
 
+	-- Downed (L3): the collapse, held until a friend pulls you up or the timer ends.
+	Net.Event("Notify").OnClientEvent:Connect(function(data)
+		if data.Kind == "downed" then
+			PlayerAnimController.Play("Death")
+		elseif data.Kind == "revived" then
+			PlayerAnimController.Relax()
+		end
+	end)
+
 	-- Fires on this client when the local player triggers a prompt.
 	ProximityPromptService.PromptTriggered:Connect(function(_prompt, who)
 		if who == player and not PlayerAnimController.IsBusy() then
@@ -265,7 +274,14 @@ function PlayerAnimController.Init()
 		local other = Players:GetPlayerByUserId(data.UserId)
 		local character = other and other.Character
 		if character and type(data.Key) == "string" then
-			PlayerAnimController.PlayOn(character, data.Key, data.Weight)
+			if data.Key == "Relax" then
+				local rig = Rig.Open(character)
+				if rig then
+					PoseAnimator.Relax(rig, ANIM.RelaxTime)
+				end
+			else
+				PlayerAnimController.PlayOn(character, data.Key, data.Weight)
+			end
 		end
 	end)
 end

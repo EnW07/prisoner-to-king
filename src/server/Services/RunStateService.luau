@@ -112,6 +112,9 @@ function RunStateService.StartRun(player: Player)
 	local index = profile.Meta.TotalRuns
 
 	runs[player.UserId] = blank(index)
+	if ctx.Wanted then
+		ctx.Wanted.Reset(player) -- heat never carries between runs
+	end
 
 	if index == 1 then
 		ctx.Analytics.Log(player, "FirstSpawn", 1)
@@ -338,6 +341,11 @@ function RunStateService.OnDeath(player: Player)
 	end
 
 	local lost = math.floor(run.UnsecuredGold * GameConfig.Run.DeathUnsecuredLossPercent)
+	-- L4: the rest is banked. Half of what you carried survives the capture (§14, §94).
+	local kept = run.UnsecuredGold - lost
+	if kept > 0 then
+		ctx.Economy.AddGold(player, kept, "death_kept")
+	end
 	local bestKept = "None"
 	local weapon = require(game.ReplicatedStorage.Shared.Config.WeaponConfig).Get(profile.Equipped.WeaponId)
 	if weapon then
@@ -367,9 +375,13 @@ function RunStateService.OnDeath(player: Player)
 		Title = "CAPTURED!",
 		KilledBy = killedBy,
 		GoldLost = lost,
+		GoldKept = kept,
 		GearKept = bestKept,
 		Progress = progressLine(run),
 	})
+	if ctx.Wanted then
+		ctx.Wanted.Reset(player)
+	end
 
 	ctx.Data.Save(player, false)
 end

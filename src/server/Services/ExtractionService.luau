@@ -16,6 +16,12 @@ local world
 local ScreenEvent: RemoteEvent
 local Notify: RemoteEvent
 
+-- Co-play (L3): server-side extraction timestamps. Two players out within CoPlay.Window
+-- of each other both get CoPlay.Bonus, once per pair per extraction, computed here from
+-- the server's own clock. Additive: solo pays exactly what it did.
+local recentExtractions: { [number]: number } = {}
+local paired: { [string]: boolean } = {}
+
 -- One prompt per pad; the rule is the same. `route` names the pad for analytics (H3: the
 -- postern is the locked shortcut; knowing about it is what gives run 2 a different plan).
 local function setupPad(pad: BasePart, route: string)
@@ -112,6 +118,40 @@ function ExtractionService.Complete(player: Player, pad: BasePart?, route: strin
 	profile.Meta.TotalEscapes = (profile.Meta.TotalEscapes or 0) + 1
 	ctx.Economy.AddGold(player, banked + bonus, "extraction")
 
+	-- Escaped together? Pay this player, and anyone who got out just before them who
+	-- hasn't already been paid for this pairing.
+	local now = os.clock()
+	local coPlayBonus = 0
+	for userId, at in recentExtractions do
+		if userId ~= player.UserId and now - at <= GameConfig.CoPlay.Window then
+			local key = ("%d:%d:%d"):format(
+				math.min(userId, player.UserId),
+				math.max(userId, player.UserId),
+				math.floor(at)
+			)
+			if not paired[key] then
+				paired[key] = true
+				coPlayBonus += GameConfig.CoPlay.Bonus
+				local other = game:GetService("Players"):GetPlayerByUserId(userId)
+				if other then
+					ctx.Economy.AddGold(other, GameConfig.CoPlay.Bonus, "coplay")
+					Notify:FireClient(other, {
+						Text = ("ESCAPED TOGETHER  +%d GOLD"):format(GameConfig.CoPlay.Bonus),
+						Sub = player.DisplayName:upper() .. " MADE IT OUT TOO",
+						Kind = "milestone",
+					})
+					ctx.Analytics.Log(other, "PartyBonusAwarded", GameConfig.CoPlay.Bonus)
+				end
+			end
+		end
+	end
+	recentExtractions[player.UserId] = now
+	if coPlayBonus > 0 then
+		ctx.Economy.AddGold(player, coPlayBonus, "coplay")
+		ctx.Analytics.Log(player, "CoPlayExtraction", 1)
+		ctx.Analytics.Log(player, "PartyBonusAwarded", coPlayBonus)
+	end
+
 	ctx.Analytics.Log(player, "FirstEscapeCompleted", 1)
 	ctx.Analytics.Log(player, "ExtractionSuccess", banked, {
 		run = tostring(run.RunIndex),
@@ -130,6 +170,7 @@ function ExtractionService.Complete(player: Player, pad: BasePart?, route: strin
 		Lines = lines,
 		Secured = banked,
 		Bonus = bonus,
+		CoPlayBonus = coPlayBonus,
 		Duration = math.floor(os.clock() - run.StartedAt),
 		Rooms = run.RoomCount,
 		Kills = run.Kills,

@@ -32,6 +32,8 @@ ctx.Upgrade = require(Services.UpgradeService)
 ctx.Interaction = require(Services.InteractionService)
 ctx.Rooms = require(Services.RoomService)
 ctx.Environment = require(Services.EnvironmentService)
+ctx.Wanted = require(Services.WantedService)
+ctx.Revive = require(Services.ReviveService)
 
 local WorldBuilder = require(Services.WorldBuilder)
 
@@ -53,6 +55,8 @@ ctx.Inventory.Init(ctx)
 ctx.Extraction.Init(ctx, world)
 ctx.Upgrade.Init(ctx, world)
 ctx.Environment.Init(ctx, world) -- before Interaction: the swing's breakables folder
+ctx.Wanted.Init(ctx, world) -- before Interaction: the chest and the bell add heat
+ctx.Revive.Init(ctx)
 ctx.Interaction.Init(ctx, world)
 ctx.Rooms.Init(ctx, world)
 
@@ -60,7 +64,6 @@ ctx.Rooms.Init(ctx, world)
 ctx.EnemyService.Spawn("sleepy_guard", world.PatrolGuardSpawn, {
 	PatrolA = world.PatrolPointA,
 	PatrolB = world.PatrolPointB,
-	Respawn = true,
 	SpawnCFrame = world.PatrolGuardSpawn,
 })
 -- The garrison (Sections F and H): each room a different problem.

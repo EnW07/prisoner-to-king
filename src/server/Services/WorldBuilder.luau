@@ -266,6 +266,21 @@ function WorldBuilder.Build()
 		torch(px, 7, 14.6, props, Vector3.new(0, 0, -1))
 		torch(px, 7, -14.6, props, Vector3.new(0, 0, 1))
 	end
+	-- The alarm bell (L1): hanging from a post at the hall's midpoint. Ring it on purpose.
+	box("BellPost", 106, 4, -13.2, 0.6, 8, 0.6, Palette.pitch, zones, Enum.Material.Metal)
+	decor(box("BellArm", 106, 7.8, -12.2, 0.4, 0.4, 2.4, Palette.pitch, props, Enum.Material.Metal))
+	local alarmBell = P.part(
+		"AlarmBell",
+		CFrame.new(106, 6.4, -11.4),
+		Vector3.new(1.6, 1.8, 1.6),
+		Palette.gold,
+		interact,
+		Enum.Material.Metal
+	)
+	alarmBell.Shape = Enum.PartType.Cylinder
+	alarmBell.CFrame = CFrame.new(106, 6.4, -11.4) * CFrame.Angles(0, 0, math.rad(90))
+	alarmBell.CanCollide = false
+
 	-- Chandelier winches (H4): a cleat on the south wall under each chandelier.
 	local winchW =
 		box("ChandelierWinchW", 92, 1.2, -14.2, 1.2, 2.4, 1, Palette.pitch, interact, Enum.Material.Metal)
@@ -576,6 +591,7 @@ function WorldBuilder.Build()
 		BarWinch = barWinch,
 		ChandelierWinchW = winchW,
 		ChandelierWinchE = winchE,
+		AlarmBell = alarmBell,
 		Chest = chest,
 		BarracksChest = barracksChest,
 		PosternKey = posternKey,
@@ -626,6 +642,18 @@ function WorldBuilder.Build()
 		VaultShieldPatrolA = Vector3.new(154, 0, -12),
 		VaultShieldPatrolB = Vector3.new(186, 0, -12),
 		SewerHoundSpawn = CFrame.new(173, s + 3, -60),
+		-- Where the wanted system's reinforcements arrive from (L1): doors and stairs,
+		-- never where someone died.
+		WantedSpawns = {
+			CFrame.lookAt(Vector3.new(3, 3, 0), Vector3.new(20, 3, 0)), -- the cellblock arch
+			CFrame.lookAt(Vector3.new(52, 3, 0), Vector3.new(66, 3, 0)), -- the corridor ramp
+			CFrame.lookAt(Vector3.new(106, 3, 17), Vector3.new(106, 3, 0)), -- the kitchen door
+			CFrame.lookAt(Vector3.new(96, 1, -17), Vector3.new(96, 1, 0)), -- the barracks steps
+			CFrame.lookAt(Vector3.new(141, 3, 0), Vector3.new(160, 3, 0)), -- the vault passage
+			CFrame.lookAt(Vector3.new(141, 3, 19), Vector3.new(150, 3, 15)), -- the vestibule
+			CFrame.lookAt(Vector3.new(199, 4, 0), Vector3.new(180, 4, 0)), -- the hall stairs
+			CFrame.lookAt(Vector3.new(173, -3, -30), Vector3.new(173, -3, -60)), -- the sewer ramp
+		},
 
 		-- Captain Bronn: on his dais, facing west down the sightline to the cellblock door.
 		CaptainSpawn = CFrame.lookAt(Vector3.new(238, h + 1 + 3.6, 0), Vector3.new(76, h + 1 + 3.6, 0)),
