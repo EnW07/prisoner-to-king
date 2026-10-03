@@ -168,6 +168,10 @@ local function build(model: Model)
 	end
 	refreshHealth()
 	refreshCallout()
+	-- A corpse has no health bar: the ragdoll lies there for a few seconds before fading.
+	humanoid.Died:Connect(function()
+		gui.Enabled = false
+	end)
 	humanoid.HealthChanged:Connect(refreshHealth)
 	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(refreshHealth)
 	model:GetAttributeChangedSignal("Callout"):Connect(refreshCallout)

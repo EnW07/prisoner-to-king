@@ -5,6 +5,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
@@ -12,6 +13,7 @@ local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
 local EnemyAnimator = require(script.Parent.EnemyAnimator)
 local CollisionGroups = require(script.Parent.CollisionGroups)
+local Ragdoll = require(game.ReplicatedStorage.Shared.Anim.Ragdoll)
 
 local EnemyService = {}
 local ctx
@@ -375,45 +377,83 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 	return true
 end
 
+-- A dead enemy fades out and goes. Anchored first, so a ragdoll can't keep sliding while
+-- it fades; collisions off, so nobody stands on an invisible corpse.
+local function fadeOut(model: Model)
+	if not model.Parent then
+		return
+	end
+	local time = GameConfig.Death.CorpseFadeTime
+	local info = TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.Anchored = true
+			TweenService:Create(d, info, { Transparency = 1 }):Play()
+		elseif d:IsA("Decal") then
+			TweenService:Create(d, info, { Transparency = 1 }):Play()
+		elseif d:IsA("BillboardGui") or d:IsA("Highlight") then
+			d.Enabled = false
+		end
+	end
+	task.delay(time, function()
+		if model.Parent then
+			model:Destroy()
+		end
+	end)
+end
+
+-- An enemy's death (D4): the pose holds at the frame of death while the loot bursts out,
+-- the body becomes a clean ragdoll after Death.EnemyHold, lies there for CorpseDespawn,
+-- then fades. No clip keeps playing, no humanoid keeps pathing, no corpse keeps sliding.
 function EnemyService.Kill(record, killer: Player?)
 	if record.State == "Dead" then
 		return
 	end
 	record.State = "Dead"
+	-- Freeze first (hold the exact pose, stop every clip), then detach from the animator.
+	EnemyAnimator.Freeze(record)
 	EnemyAnimator.Detach(record)
 
-	local root = record.Model.PrimaryPart :: BasePart
+	local model = record.Model
+	local humanoid: Humanoid = record.Humanoid
+	local root = model.PrimaryPart :: BasePart
 	local position = root.Position
+	active[model] = nil
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- no bar on a corpse
+	humanoid.WalkSpeed = 0
 
 	if killer then
 		ctx.Analytics.Log(killer, "FirstGuardKilled", 1, { enemy = record.EnemyId })
 		ctx.Analytics.Log(killer, "EnemyKilled", 1, { enemy = record.EnemyId })
+		ctx.RunState.RecordKill(killer)
 		ctx.LootService.DropForEnemy(record.EnemyId, position, killer)
-
-		local run = ctx.RunState.Get(killer)
-		if run and run.Objective == "STEAL THE KEY" and not run.HasKey then
-			-- Objective advances once the key actually drops; LootService handles the pickup.
-		end
 	else
 		ctx.LootService.DropForEnemy(record.EnemyId, position, nil)
 	end
-
-	-- Simple graybox death: fall over, then despawn.
-	record.Humanoid.PlatformStand = true
-	root.CanCollide = false
-	root.AssemblyLinearVelocity = Vector3.new(0, 12, 0)
-
-	local model = record.Model
-	active[model] = nil
 
 	if record.Options.OnKilled then
 		record.Options.OnKilled(record, killer)
 	end
 
-	task.delay(GameConfig.Enemy.CorpseDespawn, function()
-		if model.Parent then
-			model:Destroy()
+	task.delay(GameConfig.Death.EnemyHold, function()
+		if not model.Parent then
+			return
 		end
+		local ok, result = pcall(Ragdoll.Apply, model)
+		if not ok or not result then
+			-- Fallback: the old graybox fall. Never a T-pose standing up.
+			warn(
+				("[Enemy] Ragdoll failed for %s; falling rigid: %s"):format(record.EnemyId, tostring(result))
+			)
+			humanoid.PlatformStand = true
+			root.CanCollide = false
+			root.AssemblyLinearVelocity = Vector3.new(0, 6, 0)
+		end
+	end)
+
+	task.delay(GameConfig.Enemy.CorpseDespawn, function()
+		fadeOut(model)
 	end)
 
 	if record.Respawn then
