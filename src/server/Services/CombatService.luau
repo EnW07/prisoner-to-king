@@ -79,6 +79,9 @@ local function attacker(player: Player): (BasePart?, any?, any?)
 	if not humanoid or not root or humanoid.Health <= 0 then
 		return nil, nil, nil
 	end
+	if ctx.Revive and ctx.Revive.IsDowned(player) then
+		return nil, nil, nil -- down means down
+	end
 	local profile = ctx.Data.Get(player)
 	if not profile then
 		return nil, nil, nil
@@ -274,7 +277,7 @@ function CombatService.HandleDash(player: Player)
 	end
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid or humanoid.Health <= 0 or (ctx.Revive and ctx.Revive.IsDowned(player)) then
 		return
 	end
 	local now = os.clock()
@@ -331,6 +334,15 @@ function CombatService.GiveWeapon(player: Player, weaponId: string, autoEquip: b
 	ctx.Analytics.Log(player, "WeaponAcquired", 1, { weapon = weaponId })
 	if weapon.Rarity ~= "Common" and weapon.Rarity ~= "Uncommon" then
 		ctx.Analytics.Log(player, "RareObtained", 1, { weapon = weaponId, rarity = weapon.Rarity })
+	end
+	-- A Legendary or Mythic is server news (I4, §81): everyone hears, nobody is trapped.
+	if weapon.Rarity == "Legendary" or weapon.Rarity == "Mythic" then
+		Notify:FireAllClients({
+			Text = ("%s FOUND %s"):format(player.DisplayName:upper(), weapon.Name:upper()),
+			Sub = weapon.Rarity:upper(),
+			Kind = "announce",
+			Rarity = weapon.Rarity,
+		})
 	end
 
 	Notify:FireClient(player, {

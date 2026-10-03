@@ -34,6 +34,17 @@ local function gatherPrompts(): { ProximityPrompt }
 			table.insert(out, inst)
 		end
 	end
+	-- Revive prompts live on characters, not in the world (L3).
+	for _, player in game:GetService("Players"):GetPlayers() do
+		local character = player.Character
+		if character then
+			for _, inst in character:GetDescendants() do
+				if inst:IsA("ProximityPrompt") and inst:GetAttribute("PTKGate") == "revive" then
+					table.insert(out, inst)
+				end
+			end
+		end
+	end
 	return out
 end
 
@@ -83,6 +94,10 @@ function PromptController.OnState(state)
 			prompt.Enabled = not safe
 		elseif gate == "always" then
 			prompt.Enabled = true
+		elseif gate == "revive" then
+			-- Someone else's prompt, never your own.
+			prompt.Enabled = tonumber(prompt:GetAttribute("DownedUserId"))
+				~= game:GetService("Players").LocalPlayer.UserId
 		elseif gate == "extract" then
 			prompt.Enabled = not safe
 		elseif gate == "reenter" then
@@ -100,10 +115,20 @@ function PromptController.OnState(state)
 	end
 end
 
+local lastState = nil
 function PromptController.Init()
 	local world = workspace:WaitForChild("World")
 	interactables = world:WaitForChild("Interactables")
-	Net.Event("StateUpdate").OnClientEvent:Connect(PromptController.OnState)
+	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
+		lastState = state
+		PromptController.OnState(state)
+	end)
+	-- A revive prompt appears on a character mid-run; re-gate when one arrives.
+	workspace.DescendantAdded:Connect(function(inst)
+		if inst:IsA("ProximityPrompt") and inst:GetAttribute("PTKGate") == "revive" and lastState then
+			task.defer(PromptController.OnState, lastState)
+		end
+	end)
 end
 
 return PromptController

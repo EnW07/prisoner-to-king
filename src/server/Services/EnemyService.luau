@@ -150,7 +150,6 @@ end
 export type SpawnOptions = {
 	PatrolA: Vector3?,
 	PatrolB: Vector3?,
-	Respawn: boolean?,
 	SpawnCFrame: CFrame?,
 	IdlePose: string?, -- an AnimationConfig pose held while idle (leaning, warming hands)
 	AggroRange: number?, -- override the config's notice range for this spawn
@@ -215,7 +214,6 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		AggroRange = if opts.Asleep then ENEMY.SleepNoticeRange else (opts.AggroRange or cfg.AggroRange),
 		SpawnCFrame = opts.SpawnCFrame or cframe,
 		Seed = math.random() * 100, -- per-enemy phase for strafing
-		Respawn = opts.Respawn == true,
 		Options = opts,
 	}
 
@@ -311,11 +309,14 @@ local function setAlertMark(record, on: boolean)
 end
 
 -- The alert moment (F8): plant, face, head snap and "!", then engage after `time`.
-local function startAlert(record, targetRoot: BasePart, time: number)
+local function startAlert(record, targetRoot: BasePart, time: number, who: Player?)
 	local root = record.Model.PrimaryPart :: BasePart
 	local now = os.clock()
 	record.State = "Alert"
 	record.AlertUntil = now + time
+	if who and ctx.Wanted then
+		ctx.Wanted.Seen(who) -- being noticed is heat (L1)
+	end
 	if not record.Config.Static then
 		record.Humanoid:MoveTo(root.Position)
 	end
@@ -407,7 +408,8 @@ function EnemyService.Think(record, _dt: number)
 				startAlert(
 					record,
 					targetRoot :: BasePart,
-					if record.WasAsleep then ENEMY.WakeTime else ENEMY.AlertTime
+					if record.WasAsleep then ENEMY.WakeTime else ENEMY.AlertTime,
+					target
 				)
 				record.WasAsleep = false
 				return
@@ -704,13 +706,22 @@ function EnemyService.DamagePlayer(record, player: Player, amount: number, attac
 	end
 	-- Recorded BEFORE the health change: Humanoid.Died reads it synchronously.
 	ctx.RunState.RecordHit(player, record.Config.DisplayName, attackName)
-	hum.Health = math.max(0, hum.Health - amount)
 	HitConfirm:FireClient(player, {
 		Kind = "taken",
 		Damage = amount,
 		Position = (record.Model.PrimaryPart :: BasePart).Position,
 		Source = attackName,
 	})
+	-- A blow that would kill downs the player instead when a friend is near (L3). A blow
+	-- on someone already down is the death. Solo, nothing here changes.
+	local revive = ctx.Revive
+	if revive and revive.IsDowned(player) then
+		hum.Health = 0
+	elseif revive and amount >= hum.Health and revive.TryDown(player, hum, attackName) then
+		return
+	else
+		hum.Health = math.max(0, hum.Health - amount)
+	end
 	if hum.Health <= 0 and record.Options.OnKilledPlayer then
 		record.Options.OnKilledPlayer(record, player, attackName)
 	end
@@ -839,7 +850,7 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		record.WasAsleep = false
 		setIdlePose(record, false)
 		if not record.Attacking and now >= record.StaggeredUntil then
-			startAlert(record, attackerRoot, ENEMY.AlertTimeHit)
+			startAlert(record, attackerRoot, ENEMY.AlertTimeHit, attacker)
 		end
 	end
 
@@ -970,6 +981,9 @@ function EnemyService.Kill(record, killer: Player?)
 		ctx.Analytics.Log(killer, "FirstGuardKilled", 1, { enemy = record.EnemyId })
 		ctx.Analytics.Log(killer, "EnemyKilled", 1, { enemy = record.EnemyId })
 		ctx.RunState.RecordKill(killer)
+		if ctx.Wanted then
+			ctx.Wanted.AddHeat(killer, GameConfig.Wanted.HeatKill, "kill")
+		end
 	end
 	task.delay(if cfg.Boss then hold else 0, function()
 		ctx.LootService.DropForEnemy(record.EnemyId, position, killer)
@@ -998,12 +1012,8 @@ function EnemyService.Kill(record, killer: Player?)
 	task.delay(GameConfig.Enemy.CorpseDespawn + (if cfg.Boss then hold else 0), function()
 		fadeOut(model)
 	end)
-
-	if record.Respawn then
-		task.delay(GameConfig.Enemy.RespawnDelay, function()
-			EnemyService.Spawn(record.EnemyId, record.SpawnCFrame, record.Options)
-		end)
-	end
+	-- No respawn: a guard you kill stays dead for the run (L1). The wanted system sends
+	-- new ones from entrances.
 end
 
 -- Remove a living enemy without a kill: no loot, no analytics, no respawn. For enemies

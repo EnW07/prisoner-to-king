@@ -168,10 +168,13 @@ function InteractionService.Init(context, builtWorld)
 			local mouth = world.Chest.CFrame * CFrame.new(0, world.Chest.Size.Y / 2, -world.Chest.Size.Z)
 			ctx.LootService.DropTable(LootConfig.ChestTable, mouth.Position, player)
 		end
-		-- The chest's base gold is not part of the guarantee. It pays every run (§25 economy).
-		ctx.RunState.AddUnsecuredGold(player, GameConfig.Economy.ChestGold)
-		Notify:FireClient(player, { Text = ("+%d Gold"):format(GameConfig.Economy.ChestGold), Kind = "gold" })
+		-- The chest's base gold is not part of the guarantee. It pays every run (§25 economy),
+		-- times the wanted multiplier.
+		local chestGold = math.floor(GameConfig.Economy.ChestGold * ctx.Wanted.GoldMultiplier(player) + 0.5)
+		ctx.RunState.AddUnsecuredGold(player, chestGold)
+		Notify:FireClient(player, { Text = ("+%d Gold"):format(chestGold), Kind = "gold" })
 
+		ctx.Wanted.AddHeat(player, GameConfig.Wanted.HeatChest, "chest")
 		InteractionService.TriggerAlarm(player)
 
 		-- The chest gives loot exactly once per run. `run.ChestOpened` stays true for the
@@ -239,6 +242,7 @@ function InteractionService.InitCastle()
 		local mouth = chest.CFrame * CFrame.new(0, chest.Size.Y / 2, -chest.Size.Z)
 		ctx.LootService.DropTable("barracks_chest", mouth.Position, player)
 		ctx.Analytics.Log(player, "BarracksChestOpened", 1)
+		ctx.Wanted.AddHeat(player, GameConfig.Wanted.HeatChest, "chest")
 		if run.State ~= "InDanger" or run.Objective ~= "RUN! ESCAPE WITH YOUR LOOT" then
 			InteractionService.TriggerAlarm(player)
 		end
@@ -264,6 +268,25 @@ function InteractionService.InitCastle()
 			ctx.Analytics.Log(player, "SecretFound", 1, { secret = id })
 		end)
 	end
+	-- 9. THE ALARM BELL (L1): the voluntary way to raise the wanted level. More guards,
+	-- more gold. That choice is the whole point of the system.
+	if world.AlarmBell then
+		local bellPrompt = makePrompt(world.AlarmBell, "Ring", "ALARM BELL — MORE GUARDS, MORE GOLD", 0.5)
+		bellPrompt:SetAttribute("PTKGate", "always")
+		bellPrompt.Triggered:Connect(function(player)
+			if not validate(player, world.AlarmBell) then
+				return
+			end
+			ctx.Wanted.AddHeat(player, GameConfig.Wanted.HeatBell, "bell")
+			ctx.Analytics.Log(player, "BellRung", 1)
+			Notify:FireAllClients({ Text = "THE BELL RINGS", Sub = "THE CASTLE IS COMING", Kind = "alarm" })
+			local run = ctx.RunState.Get(player)
+			if run and run.Objective ~= "RUN! ESCAPE WITH YOUR LOOT" then
+				ctx.Extraction.Reveal()
+			end
+		end)
+	end
+
 	local S = GameConfig.Secrets
 	secret(world.LooseBrick, "Pry", "LOOSE BRICK", "loose_brick", function()
 		return math.random(S.LooseBrickGold[1], S.LooseBrickGold[2])
@@ -287,7 +310,11 @@ function InteractionService.TriggerAlarm(player: Player)
 	ctx.Extraction.Reveal()
 
 	for i = 1, math.min(GameConfig.Run.AlarmGuardCount, #world.AlarmGuardSpawns) do
-		ctx.EnemyService.Spawn("alarm_guard", world.AlarmGuardSpawns[i], { Respawn = false })
+		ctx.EnemyService.Spawn(
+			"alarm_guard",
+			world.AlarmGuardSpawns[i],
+			{ SpawnCFrame = world.AlarmGuardSpawns[i] }
+		)
 	end
 
 	-- Hounds reach the sewer a little later (F4): the way out is no longer free, and the
@@ -295,7 +322,7 @@ function InteractionService.TriggerAlarm(player: Player)
 	if world.SewerHoundSpawn then
 		task.delay(GameConfig.Run.AlarmHoundDelay, function()
 			ctx.EnemyService.SpawnPack("hound", world.SewerHoundSpawn, GameConfig.Run.AlarmHoundCount, {
-				Respawn = false,
+				SpawnCFrame = world.SewerHoundSpawn,
 			})
 			Notify:FireAllClients({ Text = "HOUNDS LOOSE IN THE SEWER", Kind = "alarm" })
 		end)

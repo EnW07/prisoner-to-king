@@ -163,7 +163,10 @@ local function fillCard()
 	killedByLabel.Text = if killer
 		then ("Killed by: %s — %s"):format(tostring(killer.Enemy), tostring(killer.Attack))
 		else "Killed"
-	goldLostLabel.Text = ("Gold lost: %s"):format(UIStyle.Number(data.GoldLost or 0))
+	local kept = data.GoldKept or 0
+	goldLostLabel.Text = if kept > 0
+		then ("Gold lost: %s  ·  kept: %s"):format(UIStyle.Number(data.GoldLost or 0), UIStyle.Number(kept))
+		else ("Gold lost: %s"):format(UIStyle.Number(data.GoldLost or 0))
 	gearKeptLabel.Text = ("Gear kept: %s"):format(tostring(data.GearKept or "None"))
 	progressLabel.Text = ("Progress this run: %s"):format(tostring(data.Progress or ""))
 end
