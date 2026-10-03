@@ -8,6 +8,8 @@
 
 # Rojo / tooling
 sourcemap.json
+# Stray tool binaries dropped in the repo root. Rokit installs these under ~/.rokit/bin.
+/rojo.exe
 /build/
 /out/
 
