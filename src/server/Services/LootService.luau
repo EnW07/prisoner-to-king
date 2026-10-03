@@ -143,6 +143,41 @@ function LootService.Spawn(kind: string, position: Vector3, payload: any, ownerU
 	text.Text = if kind == "Gold" then ("+%d Gold"):format(payload) else visual.Label
 	text.Parent = label
 
+	-- A beam up from the drop (I3, K1): visible across a room, sized and coloured by what
+	-- it is. Weapons by rarity tier; gold a thin gold line; the key a thin pale one.
+	local VFX = require(game.ReplicatedStorage.Shared.Config.GameConfig).VFX
+	local beamColor = visual.Color
+	local tier = 1
+	if kind == "Weapon" then
+		local weapon = WeaponConfig.Get(payload)
+		if weapon then
+			beamColor = WeaponConfig.RarityColors[weapon.Rarity] or beamColor
+			local tiers = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6 }
+			tier = tiers[weapon.Rarity] or 1
+		end
+	end
+	local a0 = Instance.new("Attachment")
+	a0.Name = "BeamBase"
+	a0.Parent = p
+	local a1 = Instance.new("Attachment")
+	a1.Name = "BeamTop"
+	a1.Position = Vector3.new(0, VFX.BeamHeight, 0)
+	a1.Parent = p
+	local beam = Instance.new("Beam")
+	beam.Name = "RarityBeam"
+	beam.Attachment0 = a0
+	beam.Attachment1 = a1
+	beam.Color = ColorSequence.new(beamColor)
+	beam.Width0 = VFX.BeamWidth[tier] or 0.5
+	beam.Width1 = 0.05
+	beam.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	beam.LightEmission = 1
+	beam.FaceCamera = true
+	beam.Parent = p
+
 	local record = {
 		Id = id,
 		Kind = kind,

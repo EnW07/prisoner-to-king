@@ -394,7 +394,19 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 		local damage = math.floor(cfg.Damage * attack.DamageMultiplier + 0.5)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
-		-- Impact: the hit test (or the dash), then the blow HOLDS (impact pause).
+		-- Impact: the hit test (or the dash), then the blow HOLDS (impact pause). Nearby
+		-- players feel it (K3): the heavier the blow, the harder the shake.
+		if attack.Shape ~= "Charge" then
+			local impactAt = if attack.Shape == "Circle"
+				then (origin * CFrame.new(0, 0, -(attack.Offset or 0))).Position
+				else (origin * CFrame.new(0, 0, -(attack.Length or 0) / 2)).Position
+			notifyEngaged(f, {
+				Text = "",
+				Kind = "bossImpact",
+				Position = impactAt,
+				Strength = TUNE.ImpactKick * attack.DamageMultiplier,
+			})
+		end
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
 		else
@@ -500,7 +512,12 @@ local function enterPhaseTwo(f: Fight)
 	record.Model:SetAttribute("Phase", 2)
 
 	EnemyAnimator.PlayAction(record, "Roar")
-	notifyEngaged(f, { Text = "BRONN ROARS", Sub = "HIS BLADE IGNITES", Kind = "bossPhase" })
+	notifyEngaged(f, {
+		Text = "BRONN ROARS",
+		Sub = "HIS BLADE IGNITES",
+		Kind = "bossPhase",
+		Position = (record.Model.PrimaryPart :: BasePart).Position,
+	})
 	for userId in f.Engaged do
 		local player = Players:GetPlayerByUserId(userId)
 		if player then

@@ -110,8 +110,33 @@ local function clipFor(character: Model, key: string): AnimationTrack?
 	return cached or nil
 end
 
+-- The swing trail on this character's weapon (CombatService puts one on every equipped
+-- weapon). Enabled for the swing, then off, so it reads as motion, not a ribbon.
+local SWING_KEYS =
+	{ Light1 = true, Light2 = true, Light3 = true, Thrust1 = true, Thrust2 = true, Heavy = true }
+local trailTokens: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any
+local function flashTrail(character: Model)
+	local weaponModel = character:FindFirstChild("EquippedWeapon")
+	local blade = weaponModel and weaponModel:IsA("Model") and weaponModel.PrimaryPart
+	local trail = blade and blade:FindFirstChild("SwingTrail")
+	if not trail or not trail:IsA("Trail") then
+		return
+	end
+	trail.Enabled = true
+	local token = (trailTokens[character] or 0) + 1
+	trailTokens[character] = token
+	task.delay(GameConfig.VFX.TrailTime, function()
+		if trailTokens[character] == token and trail.Parent then
+			trail.Enabled = false
+		end
+	end)
+end
+
 -- Play a slot on any character: the clip if configured, else the procedural move.
 function PlayerAnimController.PlayOn(character: Model, key: string, weightName: string?): PoseAnimator.Handle?
+	if SWING_KEYS[key] then
+		flashTrail(character)
+	end
 	local clip = clipFor(character, key)
 	if clip then
 		-- No HitStop.Track: HitStop already freezes every playing track on the local
