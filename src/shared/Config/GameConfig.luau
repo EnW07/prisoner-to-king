@@ -63,6 +63,46 @@ local GameConfig = {
 		CooldownGrace = 0.08,
 		-- Attack requests per second a client may send before being rate limited.
 		MaxAttackRate = 5,
+		-- The light combo's third stage is the finisher: biggest arc, most hit-stop, and it
+		-- shoves the enemy back by this impulse (studs/s, per unit mass). (E3, E8)
+		FinisherStage = 3,
+		FinisherKnockback = 28,
+		-- A light hit that doesn't break poise still rocks an enemy that isn't mid-attack by
+		-- this much (E8 "a real flinch on light hits").
+		FlinchKnockback = 6,
+	},
+
+	-- ── Dash (E1): the highest-value addition in the project ────
+	-- Without a dodge an enemy telegraph is just a delay. With one, every windup is a
+	-- decision. The client bursts at once for responsiveness; the server validates the
+	-- cooldown and owns the invincibility window, which is the part that matters.
+	Dash = {
+		Distance = 14, -- studs covered
+		Duration = 0.18, -- seconds of burst (Distance / Duration is the speed)
+		IFrameWindow = 0.32, -- seconds of invincibility from the server's grant
+		Cooldown = 1.1,
+		MaxRate = 3, -- DashRequest per second before rate limiting
+		-- Feedback. Afterimages are limb snapshots that fade; the FOV punches out and back.
+		AfterimageCount = 3,
+		AfterimageLife = 0.35,
+		FovPunch = 9, -- degrees added at the start of the dash
+		FovTime = 0.35, -- seconds to settle back
+	},
+
+	-- ── Poise (E7) ──────────────────────────────────────────────
+	Poise = {
+		RegenDelay = 1.5, -- seconds after the last hit before poise starts refilling
+		-- A stagger's pose: the hit share of StaggerDuration, the rest is the sway back up.
+		StaggerHitShare = 0.12,
+	},
+
+	-- ── Player settings (client; J2 builds the panel) ───────────
+	Settings = {
+		ReducedShake = false, -- §40: halves hit-stop kicks and skips boss shake
+		ReducedShakeFactor = 0.35,
+		CameraSensitivity = 1,
+		MusicVolume = 0.8,
+		SfxVolume = 1,
 	},
 
 	-- ── Inventory (M2 item 4) ──────────────────────────────────
@@ -170,8 +210,11 @@ local GameConfig = {
 		PromptWidthStuds = 7,
 		PromptHeightStuds = 2.2,
 		PromptLiftStuds = 3,
-		-- SWING touch button, as a fraction of the screen. Min size is UIStyle.MIN_TOUCH_PX.
+		-- Touch combat buttons (ControlButton), as fractions of the screen; the floor is
+		-- UIStyle.MIN_TOUCH_PX. SWING is largest; DASH sits left of it with a gap.
 		SwingButtonSize = 0.16,
+		DashButtonSize = 0.13,
+		ControlGap = 0.02,
 		-- 3D item icons (ViewportIcon). Close camera so icons read at phone size.
 		ViewportFov = 30,
 		ViewportMargin = 1.08, -- 1 = the model's largest extent exactly fills the view
@@ -230,15 +273,29 @@ local GameConfig = {
 
 	-- ── Feel (client): procedural animation, all TweenService ───
 	Feel = {
-		-- Hit-stop: everything local freezes for a beat when a blow lands.
+		-- Hit-stop: everything local freezes for a beat when a blow lands. Scaled by the
+		-- hit's damage relative to HeavyHitDamage, between the two multipliers (E8).
 		HitStopTime = 0.06, -- your hit lands
 		HeavyHitStopTime = 0.14, -- a kill, or taking a heavy blow
-		HeavyHitDamage = 25, -- damage taken at or above this counts as heavy
-		-- Camera kick strength, in degrees of shake (§40: a reduced-shake option comes later).
+		HeavyHitDamage = 25, -- damage at or above this counts as heavy
+		HitScaleMin = 0.6,
+		HitScaleMax = 1.8,
+		FinisherHitStopBonus = 1.5, -- the combo finisher's hit-stop multiplier
+		-- Camera kick strength, in degrees of shake, scaled like hit-stop. Honours the
+		-- reduced-shake setting (Settings.ReducedShakeFactor).
 		KickHit = 0.7,
 		KickKill = 1.4,
 		KickTaken = 1.4,
 		KickHeavyTaken = 3,
+		-- Damage numbers grow with significance: 1 at nothing, up to this at HeavyHitDamage
+		-- and above; a kill adds KillNumberBonus on top.
+		NumberScaleMax = 1.9,
+		KillNumberBonus = 0.4,
+		-- Impact sparks at the contact point, and the killing blow's flash.
+		SparkCount = 10,
+		SparkCountHeavy = 22,
+		SparkCountKill = 36,
+		KillFlashTime = 0.22,
 		-- Torches.
 		TorchFlickerAmount = 0.3, -- +/- fraction of base brightness
 		TorchFlickerSpeed = 7,

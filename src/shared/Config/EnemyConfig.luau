@@ -39,6 +39,13 @@ export type Enemy = {
 	WindupTime: number?,
 	RecoveryTime: number?,
 	AttackName: string?, -- shown on the CAPTURED screen when this attack kills you
+	-- Poise (E7): damage drains it; at zero the enemy staggers for StaggerDuration (its
+	-- attack is cut, it can't act, it's open), then poise refills. It regenerates
+	-- PoiseRegen per second after GameConfig.Poise.RegenDelay without a hit. Bosses have a
+	-- lot but it MUST be reachable, or heavy attacks have no purpose against them.
+	Poise: number,
+	PoiseRegen: number,
+	StaggerDuration: number,
 	GoldMin: number,
 	GoldMax: number,
 	LootTable: string,
@@ -71,6 +78,9 @@ local EnemyConfig: { [string]: Enemy } = {
 		WindupTime = 1.0,
 		RecoveryTime = 1.2,
 		AttackName = "SWORD CHOP",
+		Poise = 20, -- two Rusty Sword hits
+		PoiseRegen = 8,
+		StaggerDuration = 1.3,
 		GoldMin = 8,
 		GoldMax = 15,
 		LootTable = "sleepy_guard",
@@ -93,6 +103,9 @@ local EnemyConfig: { [string]: Enemy } = {
 		WindupTime = 0.8,
 		RecoveryTime = 0.9,
 		AttackName = "SPEAR STRIKE",
+		Poise = 30,
+		PoiseRegen = 10,
+		StaggerDuration = 1.1,
 		GoldMin = 10,
 		GoldMax = 18,
 		LootTable = "alarm_guard",
@@ -114,6 +127,9 @@ local EnemyConfig: { [string]: Enemy } = {
 		AttackRange = 7,
 		AttackCooldown = 0.5, -- gap between one attack's recovery and the next wind-up
 		StandoffDistance = 5.5, -- he holds here instead of walking into you
+		Poise = 110, -- about six Guard Sword hits inside the regen delay; a finisher helps
+		PoiseRegen = 25,
+		StaggerDuration = 1.6,
 		GoldMin = 40,
 		GoldMax = 60,
 		LootTable = "captain_bronn",

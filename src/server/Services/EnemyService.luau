@@ -42,8 +42,22 @@ function EnemyService.Init(context)
 		end
 		local step = accumulator
 		accumulator = 0
+		local now = os.clock()
 		for model, record in active do
 			if model.Parent and record.State ~= "Dead" then
+				-- Poise refills after a quiet spell (E7).
+				local cfg = record.Config
+				if
+					cfg.Poise
+					and record.Poise < cfg.Poise
+					and now - record.LastHitAt >= GameConfig.Poise.RegenDelay
+				then
+					record.Poise = math.min(cfg.Poise, record.Poise + (cfg.PoiseRegen or 0) * step)
+				end
+				-- A staggered enemy does nothing: that's the vulnerable window.
+				if now < record.StaggeredUntil then
+					continue
+				end
 				-- Bosses bring their own brain (e.g. CaptainService); everyone else uses Think.
 				local brain = record.Options.Brain
 				if brain then
@@ -85,6 +99,7 @@ export type SpawnOptions = {
 	OnDamaged: ((record: any, attacker: Player) -> ())?,
 	OnKilled: ((record: any, killer: Player?) -> ())?,
 	OnKilledPlayer: ((record: any, player: Player, attackName: string) -> ())?,
+	OnStaggered: ((record: any) -> ())?,
 }
 
 function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptions?)
@@ -122,6 +137,10 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		Attacking = false,
 		AttackToken = 0,
 		NextAttackAt = 0,
+		-- Poise (E7): drained by hits, refilled by time; at zero, a stagger.
+		Poise = cfg.Poise or 0,
+		LastHitAt = 0,
+		StaggeredUntil = 0,
 		PatrolA = opts.PatrolA,
 		PatrolB = opts.PatrolB,
 		PatrolTarget = opts.PatrolA,
@@ -323,6 +342,16 @@ function EnemyService.DamagePlayer(record, player: Player, amount: number, attac
 	if not hum or hum.Health <= 0 then
 		return
 	end
+	-- Inside a dash's invincibility window (server-granted, E1): no damage, and the client
+	-- is told, because reading the windup and dodging through it deserves a reward.
+	if ctx.Combat.IsInvulnerable(player) then
+		HitConfirm:FireClient(player, {
+			Kind = "dodged",
+			Position = (record.Model.PrimaryPart :: BasePart).Position,
+			Source = attackName,
+		})
+		return
+	end
 	-- Recorded BEFORE the health change: Humanoid.Died reads it synchronously.
 	ctx.RunState.RecordHit(player, record.Config.DisplayName, attackName)
 	hum.Health = math.max(0, hum.Health - amount)
@@ -342,8 +371,67 @@ function EnemyService.GetRecord(model: Model)
 	return active[model]
 end
 
+-- Shove an enemy away from `from`. The server owns enemy physics, so an impulse on the
+-- root is authoritative; the humanoid damps it quickly, which is the point: a shove, not
+-- a launch. Enemies never collide with players, so this can't push anyone around.
+local function knockback(record, from: Vector3, impulse: number)
+	local root = record.Model.PrimaryPart :: BasePart?
+	if not root or impulse <= 0 then
+		return
+	end
+	local away = flat(root.Position - from)
+	local dir = if away.Magnitude > 0.05 then away.Unit else root.CFrame.LookVector * -1
+	root:ApplyImpulse((dir + Vector3.new(0, 0.25, 0)) * impulse * root.AssemblyMass)
+end
+
+-- Poise broken (E7): the current attack is cut, the enemy can't act for StaggerDuration,
+-- and poise refills so a stagger can't chain into another. Visible: the Stagger move.
+function EnemyService.Stagger(record, attacker: Player?)
+	local cfg = record.Config
+	local humanoid: Humanoid = record.Humanoid
+	local root = record.Model.PrimaryPart :: BasePart?
+	if record.State == "Dead" or humanoid.Health <= 0 or not root then
+		return
+	end
+	local duration = cfg.StaggerDuration or 1
+	local now = os.clock()
+	record.StaggeredUntil = now + duration
+	record.Poise = cfg.Poise or 0
+	-- Cut whatever attack was in flight: its delayed strike checks the token.
+	record.AttackToken += 1
+	record.Attacking = false
+	record.State = "Stagger"
+	humanoid.AutoRotate = true
+	humanoid:MoveTo(root.Position)
+
+	EnemyAnimator.Interrupt(record) -- glow off, attack pose released
+	local hitShare = GameConfig.Poise.StaggerHitShare
+	EnemyAnimator.PlayAction(record, "Stagger", {
+		Strike = duration * hitShare,
+		Recover = duration * (1 - hitShare),
+	})
+	if record.Options.OnStaggered then
+		record.Options.OnStaggered(record)
+	end
+	if attacker then
+		ctx.Analytics.Log(attacker, "EnemyStaggered", 1, { enemy = record.EnemyId })
+	end
+	task.delay(duration, function()
+		if active[record.Model] == record and record.State == "Stagger" then
+			record.State = "Hold"
+		end
+	end)
+end
+
+export type HitInfo = {
+	Contact: Vector3?, -- where the blow landed, for sparks and numbers (E8)
+	Knockback: number?, -- impulse per unit mass; finishers and hammers
+	Finisher: boolean?,
+	PoiseDamage: number?, -- defaults to the damage dealt
+}
+
 -- Called ONLY by CombatService after full server-side validation.
-function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player)
+function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player, info: HitInfo?)
 	local record = active[model]
 	if not record or record.State == "Dead" then
 		return false
@@ -353,16 +441,46 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 	if humanoid.Health <= 0 then
 		return false
 	end
+	local hit: HitInfo = info or {}
+	local cfg = record.Config
+	local root = record.Model.PrimaryPart :: BasePart
+	local attackerRoot = attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart")
+	local from = if attackerRoot and attackerRoot:IsA("BasePart")
+		then attackerRoot.Position
+		else root.Position
 
 	humanoid.Health = math.max(0, humanoid.Health - amount)
+	local killed = humanoid.Health <= 0
+	local now = os.clock()
+	record.LastHitAt = now
 
-	local root = record.Model.PrimaryPart :: BasePart
+	-- Poise, then the reaction: a stagger if it broke, else a flinch if the enemy isn't
+	-- committed to an attack (a flinch mid-windup would lie about the strike still coming).
+	local staggered = false
+	if not killed and cfg.Poise and cfg.Poise > 0 then
+		record.Poise -= hit.PoiseDamage or amount
+		if record.Poise <= 0 and now >= record.StaggeredUntil then
+			EnemyService.Stagger(record, attacker)
+			staggered = true
+		end
+	end
+	if not killed and not staggered and not record.Attacking and now >= record.StaggeredUntil then
+		EnemyAnimator.PlayAction(record, "Flinch")
+		knockback(record, from, GameConfig.Combat.FlinchKnockback)
+	end
+	if not killed and hit.Knockback and hit.Knockback > 0 then
+		knockback(record, from, hit.Knockback)
+	end
+
 	HitConfirm:FireAllClients({
 		Kind = "dealt",
 		Damage = amount,
-		Position = root.Position,
-		Killed = humanoid.Health <= 0,
+		Position = hit.Contact or root.Position,
+		Killed = killed,
 		Attacker = attacker.UserId,
+		Target = model,
+		Finisher = hit.Finisher == true,
+		Staggered = staggered,
 	})
 
 	ctx.Analytics.Log(attacker, "FirstGuardHit", 1, { enemy = record.EnemyId })
@@ -371,7 +489,7 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		record.Options.OnDamaged(record, attacker)
 	end
 
-	if humanoid.Health <= 0 then
+	if killed then
 		EnemyService.Kill(record, attacker)
 	end
 	return true
