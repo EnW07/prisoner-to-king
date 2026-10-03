@@ -57,6 +57,24 @@ freeze development on a loop that doesn't. `docs/M2_BRIEF.md` is scoped as the r
 the failed gate: a reason, a risk and a variance for run 2, and nothing else. Don't
 re-litigate this. The gate still applies to M3 — measure second-run rate after M2 playtests.
 
+## Market constraints (2026-10-03)
+
+These came from a market research pass (`docs/MARKET_AND_REVENUE.md`). They are standing
+rules for every milestone.
+
+- **Don't build systems that reward very long sessions.** Roblox caps the recommendation
+  benefit at roughly the first 60 minutes of a user's daily playtime. A 2–4 minute run that
+  brings someone back tomorrow is worth more than a grind wall that holds them for four
+  hours today.
+- **No monetization ships before M3.** A new game gets a 48–72 hour visibility boost.
+  Launching before the loop retains spends that boost on signals that teach the algorithm
+  not to recommend the game.
+- **Revised retention gate: target D1 around 12%,** not the 20% in the blueprint.
+- **Co-play is a ranking signal.** Roblox's June 2026 discovery update counts "intentional
+  co-play days per user". M2 item 7 (`m2/coplay-hook`) is the minimum that produces that
+  signal. It is not the §22 party system, and co-play bonuses are always additive: playing
+  solo must never become inefficient.
+
 ## Before committing
 
 ```bash
