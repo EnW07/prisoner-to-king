@@ -5,6 +5,7 @@
 local Controllers = script.Parent:WaitForChild("Controllers")
 
 local UIController = require(Controllers.UIController)
+local PlayerAnimController = require(Controllers.PlayerAnimController)
 local CombatController = require(Controllers.CombatController)
 local FeedbackController = require(Controllers.FeedbackController)
 local PromptController = require(Controllers.PromptController)
@@ -15,6 +16,7 @@ local LootRevealController = require(Controllers.LootRevealController)
 local BossBarController = require(Controllers.BossBarController)
 
 UIController.Init()
+PlayerAnimController.Init()
 CombatController.Init()
 FeedbackController.Init()
 PromptController.Init()

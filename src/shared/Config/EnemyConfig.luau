@@ -18,7 +18,8 @@ export type Attack = {
 	Length: number?,
 	Radius: number?,
 	Offset: number?,
-	Pose: string, -- sword pose during the wind-up, see CaptainService.POSES
+	-- The wind-up, strike and recovery poses come from AnimationConfig.Sets.Captain, keyed
+	-- by this attack's id (a clip or a procedural move). Nothing visual lives here.
 }
 
 export type Enemy = {
@@ -128,7 +129,6 @@ local EnemyConfig: { [string]: Enemy } = {
 				Recovery = 0.9,
 				Width = 10,
 				Length = 9,
-				Pose = "Cleave",
 			},
 			-- The heavy swing with the long wind-up (brief item 1). Dodge this or lose.
 			CrushingBlow = {
@@ -139,7 +139,6 @@ local EnemyConfig: { [string]: Enemy } = {
 				Recovery = 1.3,
 				Radius = 8,
 				Offset = 6,
-				Pose = "Overhead",
 			},
 			-- Punishes hit-and-run kiting: the hall is not a safe place to stand at range.
 			Charge = {
@@ -150,7 +149,6 @@ local EnemyConfig: { [string]: Enemy } = {
 				Recovery = 1.0,
 				Width = 6,
 				Length = 26,
-				Pose = "Lowered",
 			},
 		},
 		Rotation = { "Cleave", "Cleave", "CrushingBlow" },

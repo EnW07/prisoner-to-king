@@ -5,6 +5,12 @@
 --
 -- Mouse and gamepad go through ContextActionService. Touch gets a large UIStyle SWING
 -- button (over half of Roblox play is mobile), not the stock CAS touch button.
+--
+-- The swing itself is a PoseAnimator move on the character's real joints (or a clip, if
+-- AnimationConfig.Player names one), played by PlayerAnimController. Three stages chain
+-- when swings come within GameConfig.Animation.ComboWindow of each other: a chop, a
+-- backhand, then the two-handed finisher. The stage shown here is predictive; the server
+-- keeps its own count from the same rule and decides what each stage does (E3).
 
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
@@ -17,9 +23,7 @@ local Net = require(Shared:WaitForChild("Net"))
 local WeaponConfig = require(Shared:WaitForChild("Config"):WaitForChild("WeaponConfig"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
-local HitStop = require(script.Parent:WaitForChild("HitStop"))
-local AnimationConfig = require(Shared:WaitForChild("Config"):WaitForChild("AnimationConfig"))
-local ArmPose = require(Shared:WaitForChild("ArmPose"))
+local PlayerAnimController = require(script.Parent:WaitForChild("PlayerAnimController"))
 
 local player = Players.LocalPlayer
 local CombatController = {}
@@ -27,124 +31,16 @@ local CombatController = {}
 local AttackRequest: RemoteEvent
 local localCooldownUntil = 0
 local currentCooldown = 0.65
-
--- ── Procedural swing (playtest 5, item 2) ──
--- Four phases through the real right shoulder: wind-up, strike, follow-through, recover.
--- The ARM swings, carrying the weapon in the hand. Nothing rotates the weapon on its own.
--- ArmPose finds the joint on R15 or R6, in Motor6D or AnimationConstraint form. The old
--- version only knew the R15 Motor6D, and otherwise fell back to a wrist snap on the
--- weapon: "the weapon moves and the arm doesn't". Local and cosmetic: the server never
--- reads it.
-local arms: { [Instance]: ArmPose.Joint | false } = setmetatable({}, { __mode = "k" }) :: any
-local swingToken = 0
-
--- The character's shoulder, found once per character so its rest pose is the real rest.
-local function armFor(character: Model): ArmPose.Joint?
-	local cached = arms[character]
-	if cached == nil then
-		local found = ArmPose.Find(character)
-		if not found then
-			warn("[CombatController] No right shoulder joint on this character; the swing can't move the arm")
-		end
-		arms[character] = found or false
-		return found
-	end
-	return cached or nil
-end
-
--- Plays poses one after another. A newer swing (new token) or a cancelled tween stops the
--- chain; hit-stop pauses it (HitStop.Track) and it resumes in place.
-local function chain(arm: ArmPose.Joint, steps: { { any } }, token: number)
-	local i = 0
-	local function nextStep()
-		i += 1
-		if token ~= swingToken or i > #steps or not arm.Target.Parent then
-			return
-		end
-		local step = steps[i]
-		local t =
-			ArmPose.TweenTo(arm, ArmPose.Rotation(arm.Rig, step[1]), TweenInfo.new(step[2], step[3], step[4]))
-		HitStop.Track(t)
-		t.Completed:Connect(function(state)
-			if state == Enum.PlaybackState.Completed then
-				nextStep()
-			end
-		end)
-	end
-	nextStep()
-end
-
--- A configured swing clip (AnimationConfig.Player.Swing), loaded once per Animator.
--- Weak keys, so a dead character's Animator and track are collected.
-local swingTracks: { [Instance]: AnimationTrack | false } = setmetatable({}, { __mode = "k" }) :: any
-
-local function clipSwing(character: Model): boolean
-	local id = AnimationConfig.Player.Swing
-	if not id then
-		return false
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		return false
-	end
-	local cached = swingTracks[animator]
-	if cached == nil then
-		local animation = Instance.new("Animation")
-		animation.AnimationId = id
-		local ok, result = pcall(function()
-			return animator:LoadAnimation(animation)
-		end)
-		if ok and result then
-			result.Priority = Enum.AnimationPriority.Action
-			cached = result
-		else
-			warn(
-				"[CombatController] Swing clip failed to load; using the procedural swing: "
-					.. tostring(result)
-			)
-			cached = false
-		end
-		swingTracks[animator] = cached
-	end
-	if cached then
-		-- No HitStop.Track: HitStop already freezes every playing track on this Animator.
-		cached:Play(0.05)
-		return true
-	end
-	return false
-end
-
-local function playSwing()
-	local character = player.Character
-	if not character then
-		return
-	end
-	swingToken += 1
-	local token = swingToken
-
-	-- An acquired swing animation replaces the procedural one with no other change.
-	if clipSwing(character) then
-		return
-	end
-
-	local arm = armFor(character)
-	if not arm then
-		return
-	end
-	local feel = GameConfig.Feel
-	local Q = Enum.EasingStyle.Quad
-	local Chop = ArmPose.Chop
-	chain(arm, {
-		{ Chop.WindUp, feel.SwingWindUp, Q, Enum.EasingDirection.Out },
-		{ Chop.Strike, feel.SwingStrike, Q, Enum.EasingDirection.In },
-		{ Chop.FollowThrough, feel.SwingFollowThrough, Q, Enum.EasingDirection.Out },
-		{ Chop.Rest, feel.SwingRecover, Q, Enum.EasingDirection.InOut },
-	}, token)
-end
+local comboStage = 0
+local lastSwingAt = 0
 
 local function onAttack(_actionName: string, inputState: Enum.UserInputState)
 	if inputState ~= Enum.UserInputState.Begin then
+		return
+	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
 		return
 	end
 
@@ -156,7 +52,15 @@ local function onAttack(_actionName: string, inputState: Enum.UserInputState)
 	end
 	localCooldownUntil = now + currentCooldown * 0.9
 
-	playSwing()
+	-- Combo stage: continue the chain inside the window, otherwise start over.
+	if now - lastSwingAt <= GameConfig.Animation.ComboWindow then
+		comboStage = comboStage % 3 + 1
+	else
+		comboStage = 1
+	end
+	lastSwingAt = now
+
+	PlayerAnimController.Play("Light" .. comboStage)
 	AttackRequest:FireServer()
 end
 
@@ -232,11 +136,9 @@ function CombatController.Init()
 
 	-- Keep the local cooldown in sync with the equipped weapon.
 	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
-		for _, weapon in WeaponConfig do
-			if type(weapon) == "table" and weapon.Name == state.Weapon then
-				currentCooldown = weapon.AttackCooldown
-				break
-			end
+		local weapon = state.WeaponId and WeaponConfig.Get(state.WeaponId)
+		if weapon then
+			currentCooldown = weapon.AttackCooldown
 		end
 	end)
 end

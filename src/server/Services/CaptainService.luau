@@ -23,7 +23,6 @@ local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
-local ArmPose = require(game.ReplicatedStorage.Shared.ArmPose)
 local EnemyAnimator = require(script.Parent.EnemyAnimator)
 
 local CaptainService = {}
@@ -35,41 +34,17 @@ local telegraphs: Folder
 local ENEMY_ID = "captain_bronn"
 local TUNE = GameConfig.Captain
 
--- Arm poses: rotations of his RightShoulder joint relative to its rest C0. These are rig
--- geometry, not balance values. The greatsword sits in his right hand, so the arm pose IS the
--- sword pose. Each wind-up must read as a silhouette on its own.
--- Axes (joint space): +X raises the arm forward and up; +Z raises it out to his right.
-local POSES = {
-	Rest = CFrame.Angles(math.rad(20), 0, 0), -- hanging, a little forward
-	Cleave = CFrame.Angles(0, math.rad(-45), math.rad(90)), -- out to the side, drawn back
-	Overhead = CFrame.Angles(math.rad(170), 0, 0), -- raised straight up
-	Lowered = CFrame.Angles(math.rad(80), 0, 0), -- levelled forward like a lance
-}
--- Where each wind-up ends at the moment of impact.
-local IMPACTS = {
-	Cleave = CFrame.Angles(0, math.rad(120), math.rad(90)), -- swept across to his left
-	Overhead = CFrame.Angles(math.rad(65), 0, 0), -- slammed down in front
-	Lowered = CFrame.Angles(math.rad(95), 0, 0), -- thrust home
-}
--- Anticipation: after snapping into the wind-up he keeps drawing back, slowly, until the
--- release. It reads as a coiled spring, and it tells you the blow is still coming.
--- Applied before the pose (CREEP * POSE), so it deepens the same motion.
-local CREEP = {
-	Cleave = CFrame.Angles(0, math.rad(-15), 0),
-	Overhead = CFrame.Angles(math.rad(12), 0, 0),
-	Lowered = CFrame.Angles(math.rad(-10), 0, 0),
-}
+-- His arm poses live in AnimationConfig (Poses.Bronn*, Moves.BronnCleave/Crush/Charge/
+-- Roar) and play through EnemyAnimator, so a clip id in AnimationConfig.Sets.Captain
+-- replaces any of them with no change here. Each wind-up pose is a distinct silhouette.
 -- The greatsword in his palm: blade along the arm's line, angled 40 degrees forward.
 local SWORD_SIZE = Vector3.new(0.8, 7.5, 0.35)
 local SWORD_GRIP = CFrame.Angles(math.rad(40), 0, 0) * CFrame.new(0, -(SWORD_SIZE.Y / 2 - 0.8), 0)
-local POSE_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local SWING_TWEEN = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 -- Presentation pieces are optional. If dressing him fails, the fight still runs (playtest 5:
 -- a failed dress used to leave an inert, killable husk with no health bar and no respawn).
 type Fight = {
 	Record: any,
-	Arm: ArmPose.Joint?, -- right shoulder (Motor6D or AnimationConstraint form)
 	Sword: BasePart?,
 	Highlight: Highlight?,
 	Busy: boolean,
@@ -170,7 +145,7 @@ end
 -- Silhouette: an R15 rig scaled from EnemyConfig (RigFactory), so he is genuinely taller,
 -- broader and bulkier than any guard. Dressed with pauldrons, a crested helm and an oversized
 -- greatsword held in his hand. Readable as a black shape (art §8 priority 1).
-local function dress(record): (ArmPose.Joint?, BasePart?, Highlight)
+local function dress(record): (BasePart?, Highlight)
 	local model: Model = record.Model
 	local head = model:FindFirstChild("Head") :: BasePart
 
@@ -216,16 +191,8 @@ local function dress(record): (ArmPose.Joint?, BasePart?, Highlight)
 		Enum.Material.Metal
 	) :: BasePart
 
-	-- His attacks move the real arm. The shoulder's rest offset is captured once, and every
-	-- pose is relative to it, so the rig's scale and proportions are kept. (This used to
-	-- assert a Motor6D; on rigs whose joints are AnimationConstraints that assert threw and
-	-- broke his whole spawn. Playtest 5.)
-	local arm = ArmPose.Find(model)
-	if arm then
-		ArmPose.Set(arm, POSES.Rest)
-	else
-		warn("[Captain] Bronn has no right shoulder joint; his attacks won't move his arm")
-	end
+	-- His resting stance (AnimationConfig.Sets.Captain.Posture) is baked by EnemyAnimator
+	-- when EnemyService attaches him, before this runs. Nothing about joints lives here.
 
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
@@ -237,13 +204,7 @@ local function dress(record): (ArmPose.Joint?, BasePart?, Highlight)
 	highlight.Enabled = false
 	highlight.Parent = model
 
-	return arm, sword, highlight
-end
-
-local function setPose(f: Fight, pose: string, info: TweenInfo)
-	if f.Arm then
-		ArmPose.TweenTo(f.Arm, POSES[pose], info)
-	end
+	return sword, highlight
 end
 
 -- The telegraph. The attack name is published as the model's "Callout" attribute and drawn
@@ -381,24 +342,20 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 
 	local marker = makeMarker(f, attack, origin, reach)
 	setTelegraph(f, attack.Name)
-	-- 1. Anticipation: snap into the wind-up, then keep drawing back until the release.
-	-- An AnimationConfig clip for this move replaces the procedural arm poses entirely.
-	local clip = EnemyAnimator.PlayAction(record, attackId)
-	if not clip then
-		setPose(f, attack.Pose, POSE_TWEEN)
-	end
-	local creepTime = attack.WindUp - POSE_TWEEN.Time
-	if not clip and creepTime > 0 then
-		task.delay(POSE_TWEEN.Time, function()
-			if alive(f) and f.Busy and f.Arm then
-				ArmPose.TweenTo(
-					f.Arm,
-					CREEP[attack.Pose] * POSES[attack.Pose],
-					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-				)
-			end
-		end)
-	end
+	-- The whole attack is one move with its phases filled from the attack's own timings:
+	--   Wind     the wind-up pose, snapped into then drawn deeper until the release
+	--   Strike   the arc, started StrikeLead before the hit test so the sword ARRIVES as
+	--            the blow lands, then held through the impact pause (or, for the charge,
+	--            the run pose held for the whole dash)
+	--   Recover  a slow, heavy return: the punish window, visibly
+	-- An AnimationConfig clip for this move replaces all of it with no change here.
+	local lead = math.min(GameConfig.Animation.StrikeLead, attack.WindUp * 0.4)
+	local strikeTime = if attack.Shape == "Charge" then reach / TUNE.ChargeSpeed else TUNE.ImpactPause
+	EnemyAnimator.PlayAction(record, attackId, {
+		Wind = attack.WindUp - lead,
+		Strike = lead + strikeTime,
+		Recover = attack.Recovery,
+	})
 
 	task.wait(attack.WindUp)
 
@@ -406,10 +363,7 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 		local damage = math.floor(cfg.Damage * attack.DamageMultiplier + 0.5)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
-		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
-		if not clip and f.Arm then
-			ArmPose.TweenTo(f.Arm, IMPACTS[attack.Pose], SWING_TWEEN)
-		end
+		-- Impact: the hit test (or the dash), then the blow HOLDS (impact pause).
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
 		else
@@ -422,11 +376,8 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	if not alive(f) then
 		return
 	end
-	-- 3. Recovery: a slow, heavy return to rest while he stands still. This is the
-	-- player's punish window. Timing is unchanged from before the animation pass.
-	if not clip then
-		setPose(f, "Rest", TweenInfo.new(attack.Recovery, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
-	end
+	-- Recovery: he stands still while the move's Recover phase plays out. This is the
+	-- player's punish window.
 	task.wait(attack.Recovery)
 	if not alive(f) then
 		return
@@ -682,15 +633,13 @@ function CaptainService.Spawn()
 
 	-- Dressing is presentation. If it fails, say exactly why and fight anyway: a Bronn who
 	-- can't be dressed must still move, attack and die properly.
-	local ok, arm, sword, highlight = xpcall(dress, debug.traceback, record)
+	local ok, sword, highlight = xpcall(dress, debug.traceback, record)
 	if not ok then
-		warn("[Captain] Dressing Bronn failed; fighting without costume:\n" .. tostring(arm))
-		arm = ArmPose.Find(model)
+		warn("[Captain] Dressing Bronn failed; fighting without costume:\n" .. tostring(sword))
 		sword, highlight = nil, nil
 	end
 	local f: Fight = {
 		Record = record,
-		Arm = arm,
 		Sword = sword,
 		Highlight = highlight,
 		Busy = false,
