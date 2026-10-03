@@ -81,6 +81,12 @@ function PlayerDataService.Init(context)
 	Players.PlayerAdded:Connect(function(player)
 		PlayerDataService.Load(player)
 	end)
+	-- Players already present when the server script starts (Studio) get loaded too.
+	for _, player in Players:GetPlayers() do
+		if not profiles[player.UserId] then
+			task.spawn(PlayerDataService.Load, player)
+		end
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		PlayerDataService.Save(player, true)
@@ -138,6 +144,16 @@ function PlayerDataService.Load(player: Player)
 end
 
 function PlayerDataService.Get(player: Player)
+	return profiles[player.UserId]
+end
+
+-- Yields until the player's profile is loaded, they leave, or `timeout` seconds pass.
+-- Returns the profile or nil. DeathService waits on this before the first spawn.
+function PlayerDataService.WaitForProfile(player: Player, timeout: number)
+	local deadline = os.clock() + timeout
+	while not profiles[player.UserId] and player.Parent and os.clock() < deadline do
+		task.wait(0.1)
+	end
 	return profiles[player.UserId]
 end
 

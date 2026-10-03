@@ -518,8 +518,11 @@ end
 
 function UIController.OnScreenEvent(data)
 	local escaped = data.Kind == "escaped"
-	if not escaped then
-		drainHard() -- CAPTURED: the bar is already empty before the card lands
+	if data.Kind == "captured" then
+		-- Death: the bar drains in ONE hard frame, no easing. That brutality is the point.
+		-- The CAPTURED screen itself is DeathController's, timed to the death sequence.
+		drainHard()
+		return
 	end
 
 	overlayToken += 1

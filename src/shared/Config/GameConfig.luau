@@ -20,7 +20,33 @@ local GameConfig = {
 		MaxHealth = 100,
 		WalkSpeed = 18,
 		JumpPower = 50,
-		RespawnDelay = 2,
+	},
+
+	-- ── Death (Section D; §66 tension, lesson, quick retry) ─────
+	Death = {
+		-- The killing blow's freeze on the client, and the hold before the server ragdolls
+		-- the body: the same length, so the body goes limp as the freeze ends.
+		HitStop = 0.15,
+		-- Colour drains over this long (ColorCorrectionEffect), to this saturation.
+		DesaturateTime = 0.4,
+		Saturation = -0.85,
+		Contrast = 0.08,
+		-- The camera detaches and drifts back and up from where it is. Never a cut.
+		CameraDriftTime = 2.6,
+		CameraBack = 13, -- studs behind the body, along the camera's own view
+		CameraUp = 8,
+		-- CAPTURED fades in after this beat, over CardInTime.
+		CardDelay = 1.1,
+		CardInTime = 0.45,
+		-- TRY AGAIN respawns at once; doing nothing respawns after this.
+		AutoRespawnDelay = 8,
+		MaxRespawnRate = 1, -- RespawnRequest per second before rate limiting
+		ProfileWaitTimeout = 15, -- the first spawn waits this long for the profile at most
+		RestoreTime = 0.35, -- colour back on respawn
+		-- Enemies: the pose holds this long at the frame of death before the ragdoll, and
+		-- the body fades out over CorpseFadeTime after Enemy.CorpseDespawn.
+		EnemyHold = 0.15,
+		CorpseFadeTime = 0.7,
 	},
 
 	-- ── Combat ──────────────────────────────────────────────────
@@ -70,7 +96,7 @@ local GameConfig = {
 	Enemy = {
 		ThinkInterval = 0.2, -- AI tick, NOT per-frame (§46)
 		RespawnDelay = 25,
-		CorpseDespawn = 3,
+		CorpseDespawn = 4, -- seconds a dead enemy lies there before it fades (Death.CorpseFadeTime)
 		LeashDistance = 90,
 		-- The attack cycle's strike area: a box in front of the enemy, along the facing it
 		-- committed to at the start of its windup. Reach is the enemy's AttackRange.

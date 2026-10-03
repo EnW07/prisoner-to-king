@@ -89,6 +89,9 @@ end
 
 -- Very short camera nudge. Kept small: §40 asks for a reduced-shake option later.
 local function cameraKick(strength: number)
+	if camera.CameraType == Enum.CameraType.Scriptable then
+		return -- the death camera is drifting; a kick would fight its tween
+	end
 	local start = os.clock()
 	local duration = 0.12
 	local conn
