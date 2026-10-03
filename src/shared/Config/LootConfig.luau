@@ -39,12 +39,26 @@ LootConfig.Tables = {
 	},
 }
 
+-- The chest on every run after the first (playtest 5). Run 1 is the §115 guarantee below;
+-- after that the chest pays out like any other loot: usually gold, sometimes a better blade,
+-- sometimes nothing. The chest's fixed Economy.ChestGold is paid on top, every run.
+LootConfig.ChestTable = "chest"
+LootConfig.Tables.chest = {
+	Rolls = 1,
+	Entries = {
+		{ Kind = "None", Weight = 30 },
+		{ Kind = "Gold", Weight = 62, Min = 15, Max = 35 },
+		{ Kind = "Weapon", Id = "guard_sword", Weight = 8 },
+	} :: { Entry },
+}
+
 -- §115: randomness must never be able to break onboarding.
 -- These are unconditional in Milestone 1 and stay unconditional on every player's FIRST run.
 LootConfig.Guarantees = {
 	-- The first guard a player kills always drops the cellblock key.
 	FirstGuardDropsKey = true,
-	-- The first chest a player opens always contains the Rusty Sword.
+	-- The chest on a player's FIRST run always contains the Rusty Sword (and on any later run
+	-- until they own it). Every other run it rolls LootConfig.ChestTable.
 	FirstChestWeapon = "rusty_sword",
 }
 

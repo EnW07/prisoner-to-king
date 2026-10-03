@@ -150,14 +150,23 @@ function InteractionService.Init(context, builtWorld)
 
 		ctx.Analytics.Log(player, "FirstChestOpened", 1)
 
-		-- §115: the first chest ALWAYS contains the Rusty Sword, and the FIRST time a player
-		-- gets it, it goes straight into their hand. A new player who doesn't notice the
-		-- reveal's EQUIP button must not fight Bronn with a 7-damage spoon. Once they own it,
-		-- later chests leave their chosen weapon alone (manual equip, M2 item 4).
+		-- §115: on the FIRST run the chest always contains the Rusty Sword, straight into
+		-- the player's hand (a new player who misses the EQUIP button must not fight Bronn
+		-- with a 7-damage spoon). The guarantee covers run 1 only, or any later run where the
+		-- player somehow still doesn't own it. Every other time the chest rolls its loot
+		-- table: gold, a chance at something better, nothing guaranteed. (Playtest 5: it used
+		-- to hand out the same sword every run.)
 		local guaranteed = LootConfig.Guarantees.FirstChestWeapon
 		local profile = ctx.Data.Get(player)
-		local firstTime = profile ~= nil and not table.find(profile.Inventory.Weapons, guaranteed)
-		ctx.Combat.GiveWeapon(player, guaranteed, firstTime)
+		local owned = profile ~= nil and table.find(profile.Inventory.Weapons, guaranteed) ~= nil
+		if run.RunIndex == 1 or not owned then
+			ctx.Combat.GiveWeapon(player, guaranteed, not owned)
+		else
+			-- Out of the chest's mouth, onto the floor, owned by this player.
+			local mouth = world.Chest.CFrame * CFrame.new(0, world.Chest.Size.Y / 2, -world.Chest.Size.Z)
+			ctx.LootService.DropTable(LootConfig.ChestTable, mouth.Position, player)
+		end
+		-- The chest's base gold is not part of the guarantee. It pays every run (§25 economy).
 		ctx.RunState.AddUnsecuredGold(player, GameConfig.Economy.ChestGold)
 		Notify:FireClient(player, { Text = ("+%d Gold"):format(GameConfig.Economy.ChestGold), Kind = "gold" })
 
