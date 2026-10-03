@@ -30,6 +30,8 @@ ctx.Inventory = require(Services.InventoryService)
 ctx.Extraction = require(Services.ExtractionService)
 ctx.Upgrade = require(Services.UpgradeService)
 ctx.Interaction = require(Services.InteractionService)
+ctx.Rooms = require(Services.RoomService)
+ctx.Environment = require(Services.EnvironmentService)
 
 local WorldBuilder = require(Services.WorldBuilder)
 
@@ -50,7 +52,9 @@ ctx.Combat.Init(ctx)
 ctx.Inventory.Init(ctx)
 ctx.Extraction.Init(ctx, world)
 ctx.Upgrade.Init(ctx, world)
+ctx.Environment.Init(ctx, world) -- before Interaction: the swing's breakables folder
 ctx.Interaction.Init(ctx, world)
+ctx.Rooms.Init(ctx, world)
 
 -- ── 3. Populate the dungeon. ──
 ctx.EnemyService.Spawn("sleepy_guard", world.PatrolGuardSpawn, {
@@ -59,20 +63,43 @@ ctx.EnemyService.Spawn("sleepy_guard", world.PatrolGuardSpawn, {
 	Respawn = true,
 	SpawnCFrame = world.PatrolGuardSpawn,
 })
--- The roster (Section F): each a different problem. The archer covers the vault from the
--- dais; the shield guard walks the line between the door and the sewer arch; the sentry
--- makes the corridor a timing problem.
+-- The garrison (Sections F and H): each room a different problem.
+-- Guard room: a second guard warms his hands at the hearth and only notices you up close,
+-- so the first fight stays one guard at a time (§116).
+ctx.EnemyService.Spawn("sleepy_guard", world.HearthGuardSpawn, {
+	SpawnCFrame = world.HearthGuardSpawn,
+	IdlePose = "WarmHands",
+	AggroRange = 12,
+})
+-- The long hall: two spearmen on opposite lengths, a sentry on the north balcony firing
+-- across the hall on the kitchen door's line.
+for _, p in world.HallPatrolSpawns do
+	ctx.EnemyService.Spawn("alarm_guard", p.Spawn, { PatrolA = p.A, PatrolB = p.B, SpawnCFrame = p.Spawn })
+end
+ctx.EnemyService.Spawn("crossbow_sentry", world.HallSentrySpawn, { SpawnCFrame = world.HallSentrySpawn })
+-- Kitchen: a cook with his back to the door.
+ctx.EnemyService.Spawn("sleepy_guard", world.KitchenGuardSpawn, {
+	SpawnCFrame = world.KitchenGuardSpawn,
+	IdlePose = "WarmHands",
+	AggroRange = 14,
+})
+-- Barracks: three sleepers who wake if disturbed, and a brute between you and the key.
+for _, cf in world.BarracksSleeperSpawns do
+	ctx.EnemyService.Spawn("alarm_guard", cf, { SpawnCFrame = cf, Asleep = true })
+end
+ctx.EnemyService.Spawn(
+	"brute",
+	world.BarracksBruteSpawn,
+	{ SpawnCFrame = world.BarracksBruteSpawn, AggroRange = 20 }
+)
+-- Vault: the archer covers it from the dais; the shield guard walks the line between the
+-- door and the sewer arch.
 ctx.EnemyService.Spawn("archer", world.VaultArcherSpawn, { SpawnCFrame = world.VaultArcherSpawn })
 ctx.EnemyService.Spawn("shield_guard", world.VaultShieldSpawn, {
 	PatrolA = world.VaultShieldPatrolA,
 	PatrolB = world.VaultShieldPatrolB,
 	SpawnCFrame = world.VaultShieldSpawn,
 })
-ctx.EnemyService.Spawn(
-	"crossbow_sentry",
-	world.CorridorSentrySpawn,
-	{ SpawnCFrame = world.CorridorSentrySpawn }
-)
 -- M2: Captain Bronn waits in his hall off the vault. (M2 brief item 1)
 ctx.Captain.Spawn()
 

@@ -15,6 +15,8 @@ local CollisionGroups = {}
 
 local ENEMIES = "PTKEnemies"
 local PLAYERS = "PTKPlayers"
+-- Parts that stop enemies but never players: the barred door (EnvironmentService).
+local BARRIER = "PTKBarrier"
 
 local function register(name: string)
 	if not PhysicsService:IsCollisionGroupRegistered(name) then
@@ -39,7 +41,10 @@ end
 function CollisionGroups.Init()
 	register(ENEMIES)
 	register(PLAYERS)
+	register(BARRIER)
 	PhysicsService:CollisionGroupSetCollidable(ENEMIES, PLAYERS, false)
+	PhysicsService:CollisionGroupSetCollidable(BARRIER, PLAYERS, false)
+	PhysicsService:CollisionGroupSetCollidable(BARRIER, ENEMIES, true)
 
 	local function hook(player: Player)
 		player.CharacterAdded:Connect(function(character)

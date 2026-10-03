@@ -152,6 +152,8 @@ export type SpawnOptions = {
 	Respawn: boolean?,
 	SpawnCFrame: CFrame?,
 	IdlePose: string?, -- an AnimationConfig pose held while idle (leaning, warming hands)
+	AggroRange: number?, -- override the config's notice range for this spawn
+	Asleep: boolean?, -- lies down with a tiny notice range until woken (noise, a hit, the alarm)
 	-- Boss hooks. Brain replaces Think; the others are notifications after the fact.
 	Brain: ((record: any, dt: number) -> ())?,
 	OnDamaged: ((record: any, attacker: Player) -> ())?,
@@ -206,8 +208,10 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		PatrolA = opts.PatrolA,
 		PatrolB = opts.PatrolB,
 		PatrolTarget = opts.PatrolA,
-		IdlePose = opts.IdlePose,
+		IdlePose = if opts.Asleep then "Sleep" else opts.IdlePose,
 		IdlePosed = false,
+		Asleep = opts.Asleep == true,
+		AggroRange = if opts.Asleep then ENEMY.SleepNoticeRange else (opts.AggroRange or cfg.AggroRange),
 		SpawnCFrame = opts.SpawnCFrame or cframe,
 		Seed = math.random() * 100, -- per-enemy phase for strafing
 		Respawn = opts.Respawn == true,
@@ -289,7 +293,9 @@ local function canSee(record, point: Vector3): boolean
 	if not head or not head:IsA("BasePart") then
 		return true
 	end
-	sightParams.FilterDescendantsInstances = { world }
+	-- Crates and barrels are cover too (H4): they block sight like walls do.
+	local breakables = workspace:FindFirstChild("Breakables")
+	sightParams.FilterDescendantsInstances = if breakables then { world, breakables } else { world }
 	local from = head.Position
 	local to = point + Vector3.new(0, 1, 0)
 	local hit = workspace:Raycast(from, to - from, sightParams)
@@ -385,7 +391,7 @@ function EnemyService.Think(record, _dt: number)
 			local pRoot = livingRoot(player)
 			if pRoot then
 				local d = flat(pRoot.Position - root.Position).Magnitude
-				if d <= cfg.AggroRange and d < best and canSee(record, pRoot.Position) then
+				if d <= record.AggroRange and d < best and canSee(record, pRoot.Position) then
 					target, targetRoot, best = player, pRoot, d
 				end
 			end
@@ -393,16 +399,28 @@ function EnemyService.Think(record, _dt: number)
 		dist = best
 		if target then
 			record.Target = target
+			EnemyService.Wake(record)
 			setIdlePose(record, false)
 			-- Notice first. A guard re-finding you soon after losing you skips the surprise.
 			if now - record.LostTargetAt > ENEMY.AlertCooldown then
-				startAlert(record, targetRoot :: BasePart, ENEMY.AlertTime)
+				startAlert(
+					record,
+					targetRoot :: BasePart,
+					if record.WasAsleep then ENEMY.WakeTime else ENEMY.AlertTime
+				)
+				record.WasAsleep = false
 				return
 			end
 		end
 	end
 
 	local leashed = flat(root.Position - record.SpawnCFrame.Position).Magnitude > ENEMY.LeashDistance
+	if record.Asleep then
+		-- Asleep: lie there. Nothing moves until something wakes it.
+		record.State = "Idle"
+		setIdlePose(record, true)
+		return
+	end
 
 	if target and targetRoot and not leashed then
 		if now < record.AlertUntil then
@@ -495,6 +513,27 @@ function EnemyService.Think(record, _dt: number)
 		record.State = "Idle"
 		humanoid:MoveTo(root.Position)
 		setIdlePose(record, true)
+	end
+end
+
+-- A sleeper wakes: full notice range, up off the bunk, surprised for WakeTime.
+function EnemyService.Wake(record)
+	if not record.Asleep then
+		return
+	end
+	record.Asleep = false
+	record.WasAsleep = true
+	record.AggroRange = record.Config.AggroRange
+	setIdlePose(record, false)
+end
+
+-- The alarm: every sleeper in the castle wakes (H1 §5, the barracks hears the bell).
+function EnemyService.WakeAll()
+	for _, record in active do
+		if record.Asleep then
+			EnemyService.Wake(record)
+			record.LostTargetAt = -math.huge
+		end
 	end
 end
 
@@ -794,6 +833,8 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		and attackerRoot:IsA("BasePart")
 	then
 		record.Target = attacker
+		EnemyService.Wake(record)
+		record.WasAsleep = false
 		setIdlePose(record, false)
 		if not record.Attacking and now >= record.StaggeredUntil then
 			startAlert(record, attackerRoot, ENEMY.AlertTimeHit)

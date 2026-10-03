@@ -63,6 +63,26 @@ function PromptController.OnState(state)
 			end
 		elseif gate == "chest" then
 			prompt.Enabled = not state.ChestOpened
+		elseif gate == "barrackschest" then
+			prompt.Enabled = not state.BarracksChestOpened
+		elseif gate == "posternkey" then
+			prompt.Enabled = not state.HasPosternKey
+			local key = prompt.Parent
+			if key and key:IsA("BasePart") then
+				key.Transparency = if state.HasPosternKey then 1 else 0 -- taken: gone, for you
+			end
+		elseif gate == "postern" then
+			-- Same per-player trick as the cellblock door: the gate is shared, its state is yours.
+			prompt.Enabled = state.HasPosternKey == true and not state.PosternOpened
+			local gatePart = prompt.Parent
+			if gatePart and gatePart:IsA("BasePart") then
+				gatePart.CanCollide = not state.PosternOpened
+				gatePart.Transparency = if state.PosternOpened then 0.75 else 0
+			end
+		elseif gate == "bar" then
+			prompt.Enabled = not safe
+		elseif gate == "always" then
+			prompt.Enabled = true
 		elseif gate == "extract" then
 			prompt.Enabled = not safe
 		elseif gate == "reenter" then

@@ -96,6 +96,38 @@ local GameConfig = {
 		StaggerHitShare = 0.12,
 	},
 
+	-- ── Rooms (RoomService) ─────────────────────────────────────
+	Rooms = {
+		CheckInterval = 0.4, -- seconds between room checks (not every frame, §46)
+	},
+
+	-- ── Environmental interaction (EnvironmentService; H4) ──────
+	Environment = {
+		PromptRange = 12,
+		-- Breakables: crates and barrels. Chunks fly; a little loot; they come back later.
+		BreakChunks = 5,
+		ChunkLife = 1.2,
+		BreakableRespawn = 90,
+		LootTables = { crate = "crate", barrel = "barrel" },
+		-- Chandeliers: cut the chain, it falls ChandelierDrop studs, everything under it hurts.
+		ChandelierDrop = 13,
+		ChandelierFallTime = 0.45,
+		ChandelierRadius = 7,
+		ChandelierDamage = 70,
+		ChandelierKnockback = 30,
+		ChandelierReset = 60,
+		ChandelierRaiseTime = 4,
+		-- The barrable door: enemies can't pass for this long, then they break it.
+		BarDuration = 20,
+	},
+
+	-- ── Secrets and side rooms (H3, H5) ─────────────────────────
+	Secrets = {
+		LooseBrickGold = { 25, 40 }, -- unsecured gold in the live loose brick
+		SewerStashGold = { 40, 70 },
+		ChapelRelicGold = 120, -- the relic: a lot, in one piece, deep in the castle
+	},
+
 	-- ── Player settings (client; J2 builds the panel) ───────────
 	Settings = {
 		ReducedShake = false, -- §40: halves hit-stop kicks and skips boss shake
@@ -168,6 +200,9 @@ local GameConfig = {
 		ChaseRangeFactor = 1.5,
 		-- Variety (F7): attack timing varies ± this fraction per attack.
 		TimingJitter = 0.15,
+		-- Sleepers (barracks): notice range while asleep, and how long waking takes.
+		SleepNoticeRange = 7,
+		WakeTime = 1.1,
 		StrafeSpeed = 3, -- radians/s of a strafing enemy's weave
 	},
 

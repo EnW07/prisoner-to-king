@@ -101,6 +101,9 @@ function EconomyService.PushState(player: Player)
 		HasWeapon = profile.Equipped.WeaponId ~= "fists",
 		ChestOpened = run and run.ChestOpened or false,
 		DoorOpened = run and run.DoorOpened or false,
+		HasPosternKey = run and run.HasPosternKey or false,
+		PosternOpened = run and run.PosternOpened or false,
+		BarracksChestOpened = run and run.BarracksChestOpened or false,
 		UpgradeCost = (ctx.Upgrade and ctx.Upgrade.GetCost(player)) or 0,
 	})
 end

@@ -31,6 +31,14 @@ type Run = {
 	-- Progress this run, for the CAPTURED screen (§67 fail-soft: the run was not wasted).
 	Kills: number,
 	CaptainReached: boolean,
+	Rooms: { [string]: boolean }, -- rooms entered this run (RoomService)
+	RoomCount: number,
+	-- The locked shortcut (H3): the postern key is per run, like the cellblock key.
+	HasPosternKey: boolean,
+	PosternOpened: boolean,
+	-- Secrets taken this run (H5), so a loose brick pays once per run.
+	Secrets: { [string]: boolean },
+	BarracksChestOpened: boolean,
 }
 
 local runs: { [number]: Run } = {}
@@ -50,6 +58,12 @@ local function blank(index: number): Run
 		LastHit = nil,
 		Kills = 0,
 		CaptainReached = false,
+		Rooms = {},
+		RoomCount = 0,
+		HasPosternKey = false,
+		PosternOpened = false,
+		Secrets = {},
+		BarracksChestOpened = false,
 	}
 end
 
@@ -185,10 +199,50 @@ function RunStateService.MarkCaptainReached(player: Player)
 	end
 end
 
+-- Called by RoomService. Returns true the first time this run enters the room.
+function RunStateService.MarkRoom(player: Player, room: string): boolean
+	local run = runs[player.UserId]
+	if not run or run.Rooms[room] then
+		return false
+	end
+	run.Rooms[room] = true
+	run.RoomCount += 1
+	return true
+end
+
+-- A secret taken this run. Returns false if it was already taken.
+function RunStateService.TakeSecret(player: Player, id: string): boolean
+	local run = runs[player.UserId]
+	if not run or run.Secrets[id] then
+		return false
+	end
+	run.Secrets[id] = true
+	return true
+end
+
+function RunStateService.GivePosternKey(player: Player)
+	local run = runs[player.UserId]
+	if not run or run.HasPosternKey then
+		return
+	end
+	run.HasPosternKey = true
+	Notify:FireClient(
+		player,
+		{ Text = "POSTERN KEY", Sub = "A SHORTER WAY OUT, FROM THE VAULT", Kind = "loot" }
+	)
+	ctx.Economy.PushState(player)
+end
+
 -- What this run achieved, in one line. Shown on CAPTURED so a death never reads as a
 -- wasted run (§67). Rooms are added when the castle has rooms to count (Section H).
 local function progressLine(run: Run): string
 	local parts = {}
+	if run.RoomCount > 0 then
+		table.insert(
+			parts,
+			("%d room%s entered"):format(run.RoomCount, if run.RoomCount == 1 then "" else "s")
+		)
+	end
 	if run.Kills > 0 then
 		table.insert(parts, ("%d guard%s killed"):format(run.Kills, if run.Kills == 1 then "" else "s"))
 	end
