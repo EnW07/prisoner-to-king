@@ -28,6 +28,9 @@ type Run = {
 	FirstGuardKilled: boolean,
 	-- The last enemy attack that landed on this player, for the CAPTURED screen.
 	LastHit: { Enemy: string, Attack: string, At: number }?,
+	-- Progress this run, for the CAPTURED screen (§67 fail-soft: the run was not wasted).
+	Kills: number,
+	CaptainReached: boolean,
 }
 
 local runs: { [number]: Run } = {}
@@ -45,6 +48,8 @@ local function blank(index: number): Run
 		StartedAt = os.clock(),
 		FirstGuardKilled = false,
 		LastHit = nil,
+		Kills = 0,
+		CaptainReached = false,
 	}
 end
 
@@ -164,6 +169,47 @@ function RunStateService.RecordHit(player: Player, enemyName: string, attackName
 	run.LastHit = { Enemy = enemyName, Attack = attackName, At = os.clock() }
 end
 
+-- Called by EnemyService.Kill for every enemy this player kills.
+function RunStateService.RecordKill(player: Player)
+	local run = runs[player.UserId]
+	if run then
+		run.Kills += 1
+	end
+end
+
+-- Called by CaptainService when the player picks the fight.
+function RunStateService.MarkCaptainReached(player: Player)
+	local run = runs[player.UserId]
+	if run then
+		run.CaptainReached = true
+	end
+end
+
+-- What this run achieved, in one line. Shown on CAPTURED so a death never reads as a
+-- wasted run (§67). Rooms are added when the castle has rooms to count (Section H).
+local function progressLine(run: Run): string
+	local parts = {}
+	if run.Kills > 0 then
+		table.insert(parts, ("%d guard%s killed"):format(run.Kills, if run.Kills == 1 then "" else "s"))
+	end
+	if run.HasKey then
+		table.insert(parts, "key stolen")
+	end
+	if run.DoorOpened then
+		table.insert(parts, "cellblock opened")
+	end
+	if run.ChestOpened then
+		table.insert(parts, "chest looted")
+	end
+	if run.CaptainReached then
+		table.insert(parts, "Captain reached")
+	end
+	if #parts == 0 then
+		return "the first guard is the lesson"
+	end
+	return table.concat(parts, ", ")
+end
+
 function RunStateService.OnCharacterAdded(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.MaxHealth = GameConfig.Player.MaxHealth
@@ -207,20 +253,21 @@ function RunStateService.OnDeath(player: Player)
 	})
 	ctx.Analytics.Log(player, "RunEnded", run.RunIndex, { result = "death" })
 
-	-- §66: CAPTURED, not "you lost everything". Equipped gear is always kept.
-	local lines = {
-		("Unsecured Gold lost: %d"):format(lost),
-		("Gear kept: %s"):format(bestKept),
-	}
-	-- Name the exact attack that did it, so a death teaches something (§12).
+	-- §66: CAPTURED, not "you lost everything". Equipped gear is always kept. Name the
+	-- exact attack that did it, so a death teaches something (§12), and what the run
+	-- achieved, so it was not wasted (§67). The client (DeathController) lays this out.
 	local hit = run.LastHit
+	local killedBy = nil
 	if hit and os.clock() - hit.At <= GameConfig.Run.DeathAttributionWindow then
-		table.insert(lines, 1, ("Taken down by %s: %s"):format(hit.Enemy:upper(), hit.Attack))
+		killedBy = { Enemy = hit.Enemy:upper(), Attack = hit.Attack }
 	end
 	ScreenEvent:FireClient(player, {
 		Kind = "captured",
 		Title = "CAPTURED!",
-		Lines = lines,
+		KilledBy = killedBy,
+		GoldLost = lost,
+		GearKept = bestKept,
+		Progress = progressLine(run),
 	})
 
 	ctx.Data.Save(player, false)

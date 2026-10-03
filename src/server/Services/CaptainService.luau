@@ -393,6 +393,7 @@ local function engage(f: Fight, player: Player)
 		return
 	end
 	f.Engaged[player.UserId] = true
+	ctx.RunState.MarkCaptainReached(player)
 	ctx.Analytics.Log(player, "CaptainEngaged", 1, { weapon = weaponId(player), run = runIndex(player) })
 	-- Spell out the choice the whole game is built on: fight for the reward, or leave with
 	-- what you're carrying (art §7 verbs: STEAL, ESCAPE).
