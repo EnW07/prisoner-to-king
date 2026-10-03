@@ -341,8 +341,10 @@ function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Pl
 		return
 	end
 
-	-- Guaranteed base gold so a kill is never a total blank (§13 / §67 fail-soft).
-	local gold = math.random(cfg.GoldMin, cfg.GoldMax)
+	-- Guaranteed base gold so a kill is never a total blank (§13 / §67 fail-soft), times the
+	-- killer's wanted multiplier (L1: danger is paid for).
+	local multiplier = if killer and ctx.Wanted then ctx.Wanted.GoldMultiplier(killer) else 1
+	local gold = math.floor(math.random(cfg.GoldMin, cfg.GoldMax) * multiplier + 0.5)
 	LootService.Spawn("Gold", position, gold)
 
 	-- Guaranteed drops (e.g. Captain Bronn's Guard Sword). Weapons belong to the killer, so a
@@ -356,7 +358,11 @@ function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Pl
 
 	for _, entry in LootService.RollTable(cfg.LootTable) do
 		if entry.Kind == "Gold" then
-			LootService.Spawn("Gold", position, math.random(entry.Min or 1, entry.Max or 1))
+			LootService.Spawn(
+				"Gold",
+				position,
+				math.floor(math.random(entry.Min or 1, entry.Max or 1) * multiplier + 0.5)
+			)
 		elseif entry.Kind == "Weapon" and entry.Id then
 			LootService.Spawn("Weapon", position, entry.Id)
 		end
