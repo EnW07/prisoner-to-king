@@ -1,443 +1,53 @@
 --!strict
 -- WorldBuilder.lua
--- Builds the whole playable world from code at runtime: no manual Studio building, no
--- imported meshes, no marketplace assets. Primitives, WedgeParts and cylinders only.
+-- Builds the whole playable castle from code at runtime: no manual Studio building, no
+-- imported meshes, no marketplace assets. Primitives only (WorldParts); props and clutter
+-- are WorldDressing's. (MASTER_BUILD_SPEC Section H.)
 --
 -- WHY: so the loop is testable with zero manual Studio work. When real art exists, replace
 -- this module with a streamed static map and keep the same reference names; nothing else in
 -- the codebase needs to change. Every name in the returned table is load-bearing.
 --
--- Layout (top-down, +X is deeper into the castle). Floor heights in brackets.
+-- LAYOUT (top-down, +X is deeper into the castle; floor heights in brackets):
 --
---   YOUR CELL ─bars─ CELLBLOCK HALL ─ramp↑─ GUARD ROOM [+3] ─ramp↓─ CORRIDOR ─[LOCKED DOOR]─▶
---   (-44..-28)       (-28..0)                (8..48)                (56..76)
+--   CELL ─bars─ CELLBLOCK ─ramp↑─ GUARD ROOM [+3] ─ramp↓─ CORRIDOR ─[LOCKED DOOR x76]─▶
+--  (-44..-28)   (-28..0)          (8..48)              (56..76)
 --
---   ▶ VAULT (76..126) ═arch═ stairs↑ CAPTAIN'S HALL [+3] (126..176)
---        │ sewer arch, south wall
---        ▼ ramp↓ SEWER [-6] ── ESCAPE PAD
+--                        KITCHEN / STORES (96..136, z 15..45)
+--                              │ door x106            └─ vestibule ─▶ vault NW corner
+--   ▶ THE LONG HALL (76..136, z ±15, 24 high, balconies at +8) ─ passage, BARRABLE DOOR x141 ─▶
+--                              │ steps↓ x96
+--                        BARRACKS [-2] (86..126, z -47..-21): sleepers, a brute, the POSTERN KEY
+--
+--   ▶ VAULT (146..196, z ±20) ═great arch═ stairs↑ BRONN'S HALL [+3] (202..246)
+--        │ false wall x162..168 north → CHAPEL [+1] (150..170, z 21..41): relic, ghost knight
+--        │ POSTERN GATE x186..190 north → short stair↑ → POSTERN PAD (the locked shortcut)
+--        │ sewer arch x170..176 south
+--        ▼ ramp↓ SEWERS [-6]: south to z=-90, west to the ESCAPE PAD at x=124; a dark branch east
 --
 --   HIDEOUT sits far away at z = 400 (separate safe area, same place file — §77).
 --
--- Sightlines (VISUAL_OVERHAUL_PLAN Phase 3): the cellblock door, the vault, the hall arch
--- and Bronn's dais are all on z = 0. Bronn stands raised at the far end, so he is in view
--- the moment the door opens on run 1. The treasure dais sits in the vault's light shafts,
--- and the sewer arch is the only south opening, so the way out reads at a glance.
--- Bronn never leaves his hall, so he can't block the chest or the escape (§115).
+-- READABILITY (H2): torches cluster on the critical path; side rooms are darker. Each room
+-- has one colour note (cells: cold slate; guard room: a hearth; hall: light shafts and
+-- ember heraldry; kitchen: wood; barracks: near-dark; vault: gold; chapel: candles;
+-- Bronn: `bleed` banners; sewer: black water). Sightlines: the door, the hall's arch, the
+-- vault and Bronn's dais are on z = 0. Vertical: balconies, steps down, a dais, a stair up.
 --
--- Colour: palette tokens only (art §3). `stone` walls, `pitch` floors and iron, `ember`
--- light, `bleed` only for danger (the hall threshold, Bronn's banners). Wood keeps its
--- original M1 value; the palette has no wood token. Variety comes from Materials, not hues.
+-- Colour: palette tokens only (art §3). Wood keeps its M1 value; variety is Materials.
 
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
+local P = require(script.Parent.WorldParts)
+local WorldDressing = require(script.Parent.WorldDressing)
 
 local WorldBuilder = {}
 
-local WOOD = Color3.fromRGB(110, 75, 45) -- M1 value, kept: no palette token for wood
-local CHEST_WOOD = Color3.fromRGB(120, 85, 50) -- M1 value, kept
-
--- ── Primitive helpers ───────────────────────────────────────────
-local function part(
-	name: string,
-	cf: CFrame,
-	size: Vector3,
-	color: Color3,
-	parent: Instance,
-	material: Enum.Material?
-): Part
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Anchored = true
-	p.CanCollide = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = material or Enum.Material.Slate
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = parent
-	return p
-end
-
-local function box(
-	name: string,
-	x: number,
-	y: number,
-	z: number,
-	sx: number,
-	sy: number,
-	sz: number,
-	color: Color3,
-	parent: Instance,
-	material: Enum.Material?
-): Part
-	return part(name, CFrame.new(x, y, z), Vector3.new(sx, sy, sz), color, parent, material)
-end
-
-local function wedge(
-	name: string,
-	cf: CFrame,
-	size: Vector3,
-	color: Color3,
-	parent: Instance,
-	material: Enum.Material?
-): WedgePart
-	local w = Instance.new("WedgePart")
-	w.Name = name
-	w.Anchored = true
-	w.Size = size
-	w.CFrame = cf
-	w.Color = color
-	w.Material = material or Enum.Material.Slate
-	w.Parent = parent
-	return w
-end
-
--- Decorative: never blocks movement, a raycast, a swing, or a loot drop.
-local function decor(p: BasePart): BasePart
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	return p
-end
-
--- Floor slab whose TOP surface is at `top`.
-local function floor(
-	name: string,
-	x0: number,
-	x1: number,
-	z0: number,
-	z1: number,
-	top: number,
-	parent: Instance,
-	material: Enum.Material?
-): Part
-	local depth = 2
-	return box(
-		name,
-		(x0 + x1) / 2,
-		top - depth / 2,
-		(z0 + z1) / 2,
-		x1 - x0,
-		depth,
-		z1 - z0,
-		Palette.pitch,
-		parent,
-		material or Enum.Material.Cobblestone
-	)
-end
-
--- A ramp rising along +X from `bottom` at x0 to `top` at x1 (or falling, if top < bottom).
-local function rampX(
-	name: string,
-	x0: number,
-	x1: number,
-	z0: number,
-	z1: number,
-	bottom: number,
-	top: number,
-	parent: Instance
-)
-	local rise = top - bottom
-	local run = x1 - x0
-	local width = z1 - z0
-	-- WedgePart: the slope rises toward local +Z. Turn local +Z to world +X (or -X if falling).
-	local yaw = if rise >= 0 then math.rad(90) else math.rad(-90)
-	local h = math.abs(rise)
-	local low = math.min(bottom, top)
-	local cf = CFrame.new((x0 + x1) / 2, low + h / 2, (z0 + z1) / 2) * CFrame.Angles(0, yaw, 0)
-	wedge(name, cf, Vector3.new(width, h, run), Palette.pitch, parent, Enum.Material.Cobblestone)
-end
-
--- Same as rampX but along -Z (used for the sewer descent).
-local function rampZ(
-	name: string,
-	z0: number,
-	z1: number,
-	x0: number,
-	x1: number,
-	high: number,
-	low: number,
-	parent: Instance
-)
-	local h = high - low
-	-- Slope rises toward local +Z; no yaw needed since the high end is at the larger z.
-	local cf = CFrame.new((x0 + x1) / 2, low + h / 2, (z0 + z1) / 2)
-	wedge(name, cf, Vector3.new(x1 - x0, h, z1 - z0), Palette.pitch, parent, Enum.Material.Cobblestone)
-end
-
--- A straight wall with an arched opening. The wall runs along local Z of `frame` (frame is
--- at floor level, centred on the wall); thickness is along local X.
---   alongX = true  → the wall runs along world X (turned 90° about Y).
--- The arch is two corner wedges inside the opening: a pointed, castle-like doorway.
-local function archWall(
-	name: string,
-	cx: number,
-	floorY: number,
-	cz: number,
-	alongX: boolean,
-	length: number,
-	height: number,
-	openWidth: number,
-	openHeight: number,
-	archSize: number,
-	parent: Instance,
-	openOffset: number?
-)
-	local frame = CFrame.new(cx, floorY, cz)
-		* (if alongX then CFrame.Angles(0, math.rad(90), 0) else CFrame.new())
-	local thick = 1.4
-	local oc = openOffset or 0
-	local left0, left1 = -length / 2, oc - openWidth / 2
-	local right0, right1 = oc + openWidth / 2, length / 2
-	local mat = Enum.Material.Brick
-
-	if left1 - left0 > 0.05 then
-		part(
-			name .. "L",
-			frame * CFrame.new(0, height / 2, (left0 + left1) / 2),
-			Vector3.new(thick, height, left1 - left0),
-			Palette.stone,
-			parent,
-			mat
-		)
-	end
-	if right1 - right0 > 0.05 then
-		part(
-			name .. "R",
-			frame * CFrame.new(0, height / 2, (right0 + right1) / 2),
-			Vector3.new(thick, height, right1 - right0),
-			Palette.stone,
-			parent,
-			mat
-		)
-	end
-	part(
-		name .. "Lintel",
-		frame * CFrame.new(0, (openHeight + height) / 2, oc),
-		Vector3.new(thick, height - openHeight, openWidth),
-		Palette.stone,
-		parent,
-		mat
-	)
-	-- Corner wedges. Default WedgePart has its right angle at bottom/+Z; rotating 180° about
-	-- X puts it at top/-Z (the left corner), 180° about Z puts it at top/+Z (the right corner).
-	local a = archSize
-	wedge(
-		name .. "ArchL",
-		frame * CFrame.new(0, openHeight - a / 2, oc - openWidth / 2 + a / 2) * CFrame.Angles(math.pi, 0, 0),
-		Vector3.new(thick, a, a),
-		Palette.stone,
-		parent,
-		mat
-	)
-	wedge(
-		name .. "ArchR",
-		frame * CFrame.new(0, openHeight - a / 2, oc + openWidth / 2 - a / 2) * CFrame.Angles(0, 0, math.pi),
-		Vector3.new(thick, a, a),
-		Palette.stone,
-		parent,
-		mat
-	)
-end
-
--- A solid wall along world X or Z, bottom at floorY.
-local function wall(
-	name: string,
-	x: number,
-	floorY: number,
-	z: number,
-	sx: number,
-	height: number,
-	sz: number,
-	parent: Instance
-): Part
-	return box(name, x, floorY + height / 2, z, sx, height, sz, Palette.stone, parent, Enum.Material.Brick)
-end
-
--- Round pillar with a square base and capital. Collidable: something to fight around.
-local function pillar(x: number, floorY: number, z: number, height: number, parent: Instance)
-	local r = 1.2
-	box(
-		"PillarBase",
-		x,
-		floorY + 0.4,
-		z,
-		r * 2 + 0.8,
-		0.8,
-		r * 2 + 0.8,
-		Palette.stone,
-		parent,
-		Enum.Material.Slate
-	)
-	part(
-		"Pillar",
-		CFrame.new(x, floorY + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
-		Vector3.new(height, r * 2, r * 2),
-		Palette.stone,
-		parent,
-		Enum.Material.Cobblestone
-	).Shape =
-		Enum.PartType.Cylinder
-	box(
-		"PillarCapital",
-		x,
-		floorY + height - 0.4,
-		z,
-		r * 2 + 0.8,
-		0.8,
-		r * 2 + 0.8,
-		Palette.stone,
-		parent,
-		Enum.Material.Slate
-	)
-end
-
--- Iron bars along world X (alongX) or Z, from a to b, skipping any [gap0, gap1] span.
-local function bars(
-	name: string,
-	fixed: number,
-	a: number,
-	b: number,
-	alongX: boolean,
-	floorY: number,
-	height: number,
-	parent: Instance,
-	gap0: number?,
-	gap1: number?
-)
-	local spacing = 1.1
-	local n = math.floor((b - a) / spacing)
-	for i = 0, n do
-		local t = a + i * spacing
-		if not (gap0 and gap1 and t > gap0 and t < gap1) then
-			local x = if alongX then t else fixed
-			local z = if alongX then fixed else t
-			part(
-				name,
-				CFrame.new(x, floorY + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
-				Vector3.new(height, 0.35, 0.35),
-				Palette.pitch,
-				parent,
-				Enum.Material.Metal
-			).Shape =
-				Enum.PartType.Cylinder
-		end
-	end
-	-- Top and bottom rails. No bottom rail across a doorway gap: nothing to trip on.
-	local railYs = if gap0 then { floorY + height - 0.3 } else { floorY + 0.3, floorY + height - 0.3 }
-	for _, y in railYs do
-		local cx = if alongX then (a + b) / 2 else fixed
-		local cz = if alongX then fixed else (a + b) / 2
-		local sx = if alongX then b - a else 0.4
-		local sz = if alongX then 0.4 else b - a
-		box(name .. "Rail", cx, y, cz, sx, 0.4, sz, Palette.pitch, parent, Enum.Material.Metal)
-	end
-end
-
--- Wall torch on an iron sconce. `out` points from the wall into the room.
-local function torch(x: number, y: number, z: number, parent: Instance, out: Vector3?)
-	local o = out or Vector3.zero
-	if o.Magnitude > 0 then
-		-- The bracket: an iron plate on the wall and an arm reaching out to the torch.
-		local plate = Vector3.new(x, y, z) - o * 0.55
-		decor(
-			box(
-				"SconcePlate",
-				plate.X,
-				plate.Y,
-				plate.Z,
-				0.8,
-				1.2,
-				0.8,
-				Palette.pitch,
-				parent,
-				Enum.Material.Metal
-			)
-		)
-		local arm = Vector3.new(x, y - 0.5, z) - o * 0.3
-		decor(
-			box("SconceArm", arm.X, arm.Y, arm.Z, 0.5, 0.25, 0.5, Palette.pitch, parent, Enum.Material.Metal)
-		)
-	end
-	local handle =
-		box("Torch", x, y, z, 0.4, 1.2, 0.4, Color3.fromRGB(90, 60, 40), parent, Enum.Material.Wood)
-	decor(handle)
-	-- A visible flame, so the light has a source. Clients flicker it (WorldFXController).
-	local flame = box("Flame", x, y + 0.9, z, 0.5, 0.7, 0.5, Palette.ember, parent, Enum.Material.Neon)
-	decor(flame)
-	flame.CastShadow = false
-	local light = Instance.new("PointLight")
-	light.Color = Palette.ember
-	light.Brightness = 2.4
-	light.Range = 26
-	light.Shadows = false -- shadow-casting lights are too costly on low-end phones (§41)
-	light.Parent = flame
-	CollectionService:AddTag(flame, "PTKTorch")
-end
-
--- A window slit high in a wall, with a shaft of dusk light falling into the room.
--- `out` points from the wall into the room; the shaft slants down along it.
-local function windowSlit(x: number, y: number, z: number, out: Vector3, parent: Instance)
-	local across = Vector3.new(-out.Z, 0, out.X) -- along the wall
-	local slitCF = CFrame.fromMatrix(Vector3.new(x, y, z), across, Vector3.yAxis, -out)
-	local slit = decor(
-		part("WindowSlit", slitCF, Vector3.new(0.9, 3.2, 0.3), Palette.ember, parent, Enum.Material.Neon)
-	)
-	slit.CastShadow = false
-
-	-- The shaft: a long, faint slab tilted ~50° down into the room.
-	local length = 16
-	local tilt = math.rad(50)
-	local dir = (out * math.cos(tilt) - Vector3.yAxis * math.sin(tilt)).Unit
-	local centre = Vector3.new(x, y, z) + dir * (length / 2)
-	local shaftCF = CFrame.lookAt(centre, centre + dir)
-	local shaft = decor(
-		part("LightShaft", shaftCF, Vector3.new(1.2, 3, length), Palette.ember, parent, Enum.Material.Neon)
-	)
-	shaft.Transparency = 0.93
-	shaft.CastShadow = false
-
-	local light = Instance.new("SpotLight")
-	light.Color = Palette.ember
-	light.Brightness = 3
-	light.Range = 22
-	light.Angle = 35
-	light.Face = Enum.NormalId.Front
-	light.Parent = slit
-end
-
--- A hanging cloth banner on a wall. Bronn's hall only: `bleed` marks danger.
-local function banner(x: number, y: number, z: number, out: Vector3, parent: Instance)
-	local across = Vector3.new(-out.Z, 0, out.X)
-	local cf = CFrame.fromMatrix(Vector3.new(x, y, z) + out * 0.8, across, Vector3.yAxis, -out)
-	decor(part("Banner", cf, Vector3.new(3, 7, 0.2), Palette.bleed, parent, Enum.Material.Fabric))
-	decor(
-		part(
-			"BannerRod",
-			cf * CFrame.new(0, 3.6, 0),
-			Vector3.new(3.8, 0.3, 0.3),
-			Palette.pitch,
-			parent,
-			Enum.Material.Metal
-		)
-	)
-	-- Swallowtail: two wedges hanging off the bottom edge.
-	for _, side in { -1, 1 } do
-		decor(
-			wedge(
-				"BannerTail",
-				cf * CFrame.new(side * 0.75, -4.25, 0) * CFrame.Angles(0, math.rad(90), math.pi),
-				Vector3.new(0.2, 1.5, 1.5),
-				Palette.bleed,
-				parent,
-				Enum.Material.Fabric
-			)
-		)
-	end
-end
+local box, wall, floor, ceiling, archWall, pillar, bars, torch, windowSlit, banner, decor =
+	P.box, P.wall, P.floor, P.ceiling, P.archWall, P.pillar, P.bars, P.torch, P.windowSlit, P.banner, P.decor
+local rampX, rampZ, rampZDown = P.rampX, P.rampZ, P.rampZDown
+local WOOD, CHEST_WOOD = P.WOOD, P.CHEST_WOOD
 
 -- ── Build ───────────────────────────────────────────────────────
 function WorldBuilder.Build()
@@ -505,7 +115,7 @@ function WorldBuilder.Build()
 			decor(p)
 		end
 	end
-	torch(-43.6, 7, 4, props, Vector3.new(1, 0, 0))
+	torch(-43.6, 7, 4, props, Vector3.new(1, 0, 0), 18) -- one dim torch: the cells are cold
 	windowSlit(-36, 9, 7.9, Vector3.new(0, 0, -1), props)
 
 	local spawnPad = Instance.new("SpawnLocation")
@@ -574,7 +184,7 @@ function WorldBuilder.Build()
 	wall("RampWallN", 4, 0, 5.7, 8, 14, 1.4, zones)
 	wall("RampWallS", 4, 0, -5.7, 8, 14, 1.4, zones)
 
-	-- ══ GUARD ROOM (+3) ════════════════════════════════════════
+	-- ══ GUARD ROOM (+3): the first real fight, by a hearth ═════
 	local g = 3
 	floor("GuardFloor", 8, 48, -14, 14, g, zones)
 	-- Fill under the raised floor so there's no gap to see through.
@@ -586,12 +196,11 @@ function WorldBuilder.Build()
 	-- Wall the step down from the archways to the lower ramps' sides.
 	wall("GuardStepW", 8, 0, 0, 1.4, g, 29.4, zones)
 	wall("GuardStepE", 48, 0, 0, 1.4, g, 29.4, zones)
-	for _, px in { 18, 28, 38 } do
+	for _, px in { 18, 38 } do
 		pillar(px, g, 8, 14, zones)
 		pillar(px, g, -8, 14, zones)
 	end
 	windowSlit(18, g + 9, 13.9, Vector3.new(0, 0, -1), props)
-	windowSlit(38, g + 9, 13.9, Vector3.new(0, 0, -1), props)
 	torch(28, g + 7, -13.6, props, Vector3.new(0, 0, 1))
 	torch(9.2, g + 7, 9, props, Vector3.new(1, 0, 0))
 	torch(46.8, g + 7, -9, props, Vector3.new(-1, 0, 0))
@@ -606,47 +215,169 @@ function WorldBuilder.Build()
 	torch(62, 7, 5.6, props, Vector3.new(0, 0, -1))
 	torch(70, 7, -5.6, props, Vector3.new(0, 0, 1))
 
-	-- ══ LOCKED CELLBLOCK DOOR (arched) ═════════════════════════
-	-- Thinner than the arch wall, so the arch's corner wedges frame its top.
-	archWall("DoorWall", 76, 0, 0, false, 14.8, 14, 6, 10, 2, zones)
+	-- ══ THE LONG HALL (76..136, z ±15, 24 high) ════════════════
+	-- The room that makes the castle feel big: pillars, balconies at +8 along both sides,
+	-- banners, light shafts from high windows, a ceiling so the shafts read.
+	local hallTop = 24
+	floor("LongHallFloor", 76, 136, -15, 15, 0, zones)
+	ceiling("LongHallCeiling", 76, 136, -15, 15, hallTop, zones)
+	-- West wall carries the LOCKED CELLBLOCK DOOR (thinner than the wall, so the arch frames it).
+	archWall("LongHallWallW", 76, 0, 0, false, 31.4, hallTop, 6, 10, 2, zones)
 	local door = box("LockedDoor", 76, 5, 0, 0.6, 10, 6, WOOD, interact, Enum.Material.WoodPlanks)
+	-- East wall: the great arch toward the vault passage.
+	archWall("LongHallWallE", 136, 0, 0, false, 31.4, hallTop, 10, 13, 3, zones)
+	-- North wall: the kitchen door at x = 106. South wall: the barracks steps at x = 96.
+	archWall("LongHallWallN", 106, 0, 15, true, 61.4, hallTop, 8, 10, 2, zones, 0)
+	archWall("LongHallWallS", 106, 0, -15, true, 61.4, hallTop, 8, 10, 2, zones, -10)
+	for _, px in { 88, 106, 124 } do
+		pillar(px, 0, 9, hallTop, zones, 1.4)
+		pillar(px, 0, -9, hallTop, zones, 1.4)
+	end
+	-- Balconies: walkways at +8 along both long walls, reached by stairs at the east end.
+	local balcony = 8
+	for _, side in { 1, -1 } do
+		local z0, z1 = if side == 1 then 11 else -15, if side == 1 then 15 else -11
+		local slab = box(
+			"HallBalcony",
+			102,
+			balcony - 0.5,
+			(z0 + z1) / 2,
+			44,
+			1,
+			z1 - z0,
+			Palette.stone,
+			zones,
+			Enum.Material.Slate
+		)
+		slab.Name = if side == 1 then "HallBalconyN" else "HallBalconyS"
+		bars("BalconyRail", if side == 1 then 11.2 else -11.2, 80, 124, true, balcony, 3, zones)
+		rampX("BalconyStair", 124, 136, z0, z1, balcony, 0, zones)
+	end
+	for _, px in { 90, 106, 122 } do
+		windowSlit(px, 18, 14.9, Vector3.new(0, 0, -1), props, 22)
+		windowSlit(px, 18, -14.9, Vector3.new(0, 0, 1), props, 22)
+	end
+	banner(135.6, 11, -8, Vector3.new(-1, 0, 0), props, Palette.ember)
+	banner(135.6, 11, 8, Vector3.new(-1, 0, 0), props, Palette.ember)
+	banner(76.4, 11, -9, Vector3.new(1, 0, 0), props, Palette.ember)
+	banner(76.4, 11, 9, Vector3.new(1, 0, 0), props, Palette.ember)
+	-- Torches run the length of the critical path (both sides); the side doors are dimmer.
+	for _, px in { 82, 96, 116, 130 } do
+		torch(px, 7, 14.6, props, Vector3.new(0, 0, -1))
+		torch(px, 7, -14.6, props, Vector3.new(0, 0, 1))
+	end
+	-- Chandelier winches (H4): a cleat on the south wall under each chandelier.
+	local winchW =
+		box("ChandelierWinchW", 92, 1.2, -14.2, 1.2, 2.4, 1, Palette.pitch, interact, Enum.Material.Metal)
+	local winchE =
+		box("ChandelierWinchE", 120, 1.2, -14.2, 1.2, 2.4, 1, Palette.pitch, interact, Enum.Material.Metal)
 
-	-- ══ VAULT ══════════════════════════════════════════════════
-	floor("VaultFloor", 76, 126, -20, 20, 0, zones)
-	wall("VaultWallWN", 76, 0, 13.6, 1.4, 16, 12.8, zones)
-	wall("VaultWallWS", 76, 0, -13.6, 1.4, 16, 12.8, zones)
-	wall("VaultWallN", 101, 0, 20.7, 51.4, 16, 1.4, zones)
-	-- South wall: the sewer arch at x = 100..106.
-	archWall("VaultWallS", 101, 0, -20.7, true, 51.4, 16, 6, 9, 2, zones, 2)
+	-- ══ PASSAGE → VAULT, with the BARRABLE DOOR at x = 141 ═════
+	floor("PassageFloor", 136, 146, -5, 5, 0, zones)
+	ceiling("PassageCeiling", 136, 146, -5, 5, 13, zones)
+	wall("PassageWallS", 141, 0, -5.7, 10, 16, 1.4, zones)
+	-- The block between the main passage and the kitchen vestibule.
+	box("PassageBlock", 141, 8, 9.5, 10, 16, 8, Palette.stone, zones, Enum.Material.Brick)
+	local barDoor = box("BarDoor", 141, 5, 0, 0.6, 10, 10, WOOD, interact, Enum.Material.WoodPlanks)
+	barDoor.CanCollide = false -- open until barred (EnvironmentService)
+	barDoor.CanQuery = false
+	barDoor.Transparency = 0.75
+	-- The bar itself, shown only while the door is barred.
+	local doorBar = decor(box("DoorBar", 141.6, 5, 0, 0.4, 0.6, 8, Palette.pitch, props, Enum.Material.Metal))
+	doorBar.Transparency = 1
+	-- The winch the player uses, on the vault side of the door.
+	local barWinch =
+		box("BarWinch", 143.5, 1.2, -4.4, 1.2, 2.4, 1, Palette.pitch, interact, Enum.Material.Metal)
+	torch(140, 7, 4.6, props, Vector3.new(0, 0, -1))
+
+	-- Kitchen vestibule: the kitchen's east door drops into the vault's north-west corner.
+	floor("VestibuleFloor", 136, 146, 13.5, 24, 0, zones)
+	ceiling("VestibuleCeiling", 136, 146, 13.5, 24, 12, zones)
+	wall("VestibuleWallN", 141, 0, 24.7, 10, 14, 1.4, zones)
+	torch(141, 6, 24, props, Vector3.new(0, 0, -1), 18)
+
+	-- ══ KITCHEN / STORES (96..136, z 15..45): clutter, crates, a hearth ═
+	floor("KitchenFloor", 96, 136, 15, 45, 0, zones, Enum.Material.WoodPlanks, Color3.fromRGB(80, 62, 45))
+	ceiling("KitchenCeiling", 96, 136, 15, 45, 14, zones)
+	wall("KitchenWallW", 96, 0, 30, 1.4, 14, 30, zones)
+	wall("KitchenWallN", 116, 0, 45.7, 41.4, 14, 1.4, zones)
+	-- East wall with the door to the vestibule (z 18..24).
+	archWall("KitchenWallE", 136, 0, 30, false, 30, 14, 6, 9, 1.5, zones, -9)
+	windowSlit(126, 10, 45.2, Vector3.new(0, 0, -1), props, 14)
+	torch(97, 6, 22, props, Vector3.new(1, 0, 0), 20)
+	torch(135, 6, 40, props, Vector3.new(-1, 0, 0), 20)
+
+	-- ══ BARRACKS (-2) (86..126, z -47..-21): sleepers, a brute, the key ═
+	local b = -2
+	rampZDown("BarracksSteps", -21, -15, 92, 100, 0, b, zones)
+	wall("BarracksStepWallW", 91.3, b, -18, 1.4, 14, 6, zones)
+	wall("BarracksStepWallE", 100.7, b, -18, 1.4, 14, 6, zones)
+	floor("BarracksFloor", 86, 126, -47, -21, b, zones, Enum.Material.Slate)
+	ceiling("BarracksCeiling", 86, 126, -47, -21, b + 12, zones)
+	wall("BarracksWallW", 86, b, -34, 1.4, 14, 26, zones)
+	wall("BarracksWallE", 126, b, -34, 1.4, 14, 26, zones)
+	wall("BarracksWallS", 106, b, -47.7, 41.4, 14, 1.4, zones)
+	-- North wall, with the steps' opening at x 92..100.
+	wall("BarracksWallNW", 88.5, b, -21, 5, 14, 1.4, zones)
+	wall("BarracksWallNE", 113, b, -21, 26, 14, 1.4, zones)
+	-- Near dark: one torch by the steps, candles by the bunks (WorldDressing). Risk reads as dark.
+	torch(101.4, b + 6, -24, props, Vector3.new(1, 0, 0), 16)
+	-- Better loot, risk attached: a second chest, and the postern key on a table.
+	local barracksChest =
+		box("BarracksChest", 122, b + 1.1, -44, 3.6, 2.2, 2.6, CHEST_WOOD, interact, Enum.Material.WoodPlanks)
+	local keyTable = P.table_(90, b, -42, 4, 2.4, props)
+	local posternKey =
+		box("PosternKey", 90, b + 3, -42, 0.5, 0.2, 1.4, Palette.gold, interact, Enum.Material.Metal)
+	posternKey.CanCollide = false
+	posternKey.CFrame = keyTable * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, math.rad(25), 0)
+
+	-- ══ VAULT (146..196, z ±20) ═════════════════════════════════
+	floor("VaultFloor", 146, 196, -20, 20, 0, zones)
+	-- West wall: the passage arch at z = 0 and the vestibule arch at z 14..20.
+	archWall("VaultWallWMain", 146, 0, -5, false, 30, 16, 10, 13, 3, zones, 5)
+	archWall("VaultWallWVest", 146, 0, 15, false, 10, 16, 6, 9, 1.5, zones, 2)
+	-- North wall: solid pieces, the FALSE WALL (x 162..168), and the POSTERN GATE (x 186..190).
+	wall("VaultWallN1", 154, 0, 20.7, 16, 16, 1.4, zones)
+	local falseWall = box("FalseWall", 165, 8, 20.7, 6, 16, 1.4, Palette.stone, zones, Enum.Material.Slate)
+	falseWall.CanCollide = false
+	falseWall.CanQuery = false -- sight passes too: a guard behind it would not be hidden, there are none
+	wall("VaultWallN2", 177, 0, 20.7, 18, 16, 1.4, zones)
+	wall("VaultWallN3", 193, 0, 20.7, 6, 16, 1.4, zones)
+	box("PosternLintel", 188, 12, 20.7, 4, 8, 1.4, Palette.stone, zones, Enum.Material.Brick)
+	local posternGate =
+		box("PosternGate", 188, 4, 20.7, 4, 8, 0.6, Palette.pitch, interact, Enum.Material.Metal)
+	-- South wall: the sewer arch at x = 170..176.
+	archWall("VaultWallS", 171, 0, -20.7, true, 51.4, 16, 6, 9, 2, zones, 2)
 	-- East wall: the great arch into Bronn's hall, on the door's sightline.
-	archWall("VaultWallE", 126, 0, 0, false, 41.4, 16, 14, 13, 3, zones)
-	-- Pillars flank the room, clear of the treasure dais (x 97..113) and the z = 0 sightline.
-	for _, px in { 86, 118 } do
+	archWall("VaultWallE", 196, 0, 0, false, 41.4, 16, 14, 13, 3, zones)
+	-- Pillars flank the room, clear of the treasure dais (x 167..183) and the z = 0 sightline.
+	for _, px in { 156, 188 } do
 		pillar(px, 0, 12, 16, zones)
 		pillar(px, 0, -12, 16, zones)
 	end
 	-- The treasure dais, lit by the vault's two window shafts: the valuable thing is
 	-- literally in the light (art §2 screenshot test).
-	box("TreasureDais", 105, 0.75, 16, 16, 1.5, 7, Palette.stone, zones, Enum.Material.Slate)
-	rampZ("TreasureStep", 11.5, 12.5, 97, 113, 1.5, 0, zones)
-	windowSlit(99, 11, 19.9, Vector3.new(0, 0, -1), props)
-	windowSlit(111, 11, 19.9, Vector3.new(0, 0, -1), props)
-	torch(77.2, 8, 9, props, Vector3.new(1, 0, 0))
-	torch(77.2, 8, -9, props, Vector3.new(1, 0, 0))
-	torch(124.8, 8, 12, props, Vector3.new(-1, 0, 0))
-	torch(124.8, 8, -12, props, Vector3.new(-1, 0, 0))
+	box("TreasureDais", 175, 0.75, 16, 16, 1.5, 7, Palette.stone, zones, Enum.Material.Slate)
+	rampZ("TreasureStep", 11.5, 12.5, 167, 183, 1.5, 0, zones)
+	windowSlit(169, 11, 19.9, Vector3.new(0, 0, -1), props)
+	windowSlit(181, 11, 19.9, Vector3.new(0, 0, -1), props)
+	torch(147.2, 8, 9, props, Vector3.new(1, 0, 0))
+	torch(147.2, 8, -9, props, Vector3.new(1, 0, 0))
+	torch(194.8, 8, 12, props, Vector3.new(-1, 0, 0))
+	torch(194.8, 8, -12, props, Vector3.new(-1, 0, 0))
+	torch(172, 8, -19.6, props, Vector3.new(0, 0, 1)) -- the sewer arch is the lit way out
 
 	-- Base + separate lid, so the lid can hinge open. The lid is per-player visual state
 	-- (each run's chest is its own), so clients open it locally (WorldFXController); the
 	-- server never moves it. Gold bands: it's the valuable thing (art §3 `gold`).
 	local chestY = 1.5
 	local chest =
-		box("Chest", 105, chestY + 1.1, 16, 4, 2.2, 3, CHEST_WOOD, interact, Enum.Material.WoodPlanks)
+		box("Chest", 175, chestY + 1.1, 16, 4, 2.2, 3, CHEST_WOOD, interact, Enum.Material.WoodPlanks)
 	for _, bx in { -1.3, 1.3 } do
 		decor(
 			box(
 				"ChestBand",
-				105 + bx,
+				175 + bx,
 				chestY + 1.1,
 				16,
 				0.3,
@@ -659,62 +390,119 @@ function WorldBuilder.Build()
 		)
 	end
 	local chestLid =
-		box("ChestLid", 105, chestY + 2.6, 16, 4.2, 0.8, 3.2, CHEST_WOOD, props, Enum.Material.WoodPlanks)
+		box("ChestLid", 175, chestY + 2.6, 16, 4.2, 0.8, 3.2, CHEST_WOOD, props, Enum.Material.WoodPlanks)
 	chestLid.CanCollide = false
 	CollectionService:AddTag(chestLid, "PTKChestLid")
 
-	-- ══ CAPTAIN'S HALL (+3) ════════════════════════════════════
+	-- ══ CHAPEL (+1) (150..170, z 21..41): behind the false wall ═══
+	local c = 1
+	rampZ("ChapelStep", 21.4, 23, 162, 168, c, 0, zones)
+	floor("ChapelFloor", 150, 170, 21.4, 41, c, zones, Enum.Material.Slate)
+	ceiling("ChapelCeiling", 150, 170, 21.4, 41, c + 13, zones)
+	wall("ChapelWallW", 150, c, 31, 1.4, 14, 20, zones)
+	wall("ChapelWallE", 170, c, 31, 1.4, 14, 20, zones)
+	wall("ChapelWallN", 160, c, 41.7, 21.4, 14, 1.4, zones)
+	-- The chapel's south wall is the vault's north wall; close the sides of the false wall.
+	wall("ChapelWallSW", 155.5, c, 21.4, 11, 14, 1.4, zones)
+	wall("ChapelWallSE", 174.5, c, 21.4, 11, 14, 1.4, zones)
+	windowSlit(160, c + 10, 41.2, Vector3.new(0, 0, -1), props, 12)
+	local altar = box("Altar", 160, c + 1, 38, 5, 2, 2, Palette.stone, zones, Enum.Material.Slate)
+	local relic =
+		box("ChapelRelic", 160, c + 2.6, 38, 1.2, 1.2, 1.2, Palette.gold, interact, Enum.Material.Neon)
+	relic.CanCollide = false
+	relic.Orientation = Vector3.new(45, 0, 45)
+
+	-- ══ POSTERN (the locked shortcut, H3) ═════════════════════
+	-- Through the gate: a short stair up to a pad in the open air. Shorter and safer than
+	-- the sewer, if you took the key from the barracks.
+	floor("PosternFloor", 185, 191, 21.4, 28, 0, zones)
+	rampZ("PosternStair", 28, 36, 185, 191, 3, 0, zones)
+	floor("PosternLanding", 185, 191, 36, 42, 3, zones)
+	wall("PosternWallW", 185, 0, 31.7, 1.4, 12, 20.6, zones)
+	wall("PosternWallE", 191, 0, 31.7, 1.4, 12, 20.6, zones)
+	wall("PosternWallN", 188, 3, 42.7, 7.4, 9, 1.4, zones)
+	wall("PosternWallSE", 193, 0, 21.4, 4, 12, 1.4, zones)
+	torch(185.6, 6, 26, props, Vector3.new(1, 0, 0), 16)
+	local posternPad =
+		box("PosternPad", 188, 3.3, 39, 5, 0.6, 5, Palette.escape, interact, Enum.Material.SmoothPlastic)
+
+	-- ══ BRONN'S HALL (+3) (196..246) ══════════════════════════
 	local h = 3
-	rampX("HallStairs", 126, 132, -7, 7, 0, h, zones)
-	wall("HallStairsWallN", 129, 0, 7.7, 6, 16, 1.4, zones)
-	wall("HallStairsWallS", 129, 0, -7.7, 6, 16, 1.4, zones)
-	floor("HallFloor", 132, 176, -18, 18, h, zones, Enum.Material.Slate)
-	box("HallFloorFill", 154, 0.5, 0, 44, 1, 36, Palette.pitch, zones)
-	wall("HallWallW1", 132, 0, 12.85, 1.4, h + 18, 10.3, zones)
-	wall("HallWallW2", 132, 0, -12.85, 1.4, h + 18, 10.3, zones)
-	wall("HallWallN", 154, 0, 18.7, 45.4, h + 18, 1.4, zones)
-	wall("HallWallS", 154, 0, -18.7, 45.4, h + 18, 1.4, zones)
-	wall("HallWallE", 176.7, 0, 0, 1.4, h + 18, 38.8, zones)
+	rampX("HallStairs", 196, 202, -7, 7, 0, h, zones)
+	wall("HallStairsWallN", 199, 0, 7.7, 6, 16, 1.4, zones)
+	wall("HallStairsWallS", 199, 0, -7.7, 6, 16, 1.4, zones)
+	floor("BronnHallFloor", 202, 246, -18, 18, h, zones, Enum.Material.Slate)
+	box("BronnHallFloorFill", 224, 0.5, 0, 44, 1, 36, Palette.pitch, zones)
+	wall("BronnWallW1", 202, 0, 12.85, 1.4, h + 18, 10.3, zones)
+	wall("BronnWallW2", 202, 0, -12.85, 1.4, h + 18, 10.3, zones)
+	wall("BronnWallN", 224, 0, 18.7, 45.4, h + 18, 1.4, zones)
+	wall("BronnWallS", 224, 0, -18.7, 45.4, h + 18, 1.4, zones)
+	wall("BronnWallE", 246.7, 0, 0, 1.4, h + 18, 38.8, zones)
 	-- The line you cross to start the fight, at the top of the stairs. Colour is backed by
 	-- the stairs, the arch and the banner on entry, never the only signal (art §3).
-	decor(box("HallThreshold", 132.6, h + 0.03, 0, 1, 0.06, 14, Palette.bleed, props, Enum.Material.Neon))
-	for _, px in { 142, 154, 166 } do
+	decor(box("HallThreshold", 202.6, h + 0.03, 0, 1, 0.06, 14, Palette.bleed, props, Enum.Material.Neon))
+	-- Pillars block the charge (G1); side ledges change the elevation. A flat box is a worse fight.
+	for _, px in { 212, 224, 236 } do
 		pillar(px, h, 12, 18, zones)
 		pillar(px, h, -12, 18, zones)
 	end
-	-- His dais at the far end: he stands above you, and it reads as his room.
-	box("HallDais", 168, h + 0.5, 0, 14, 1, 18, Palette.stone, zones, Enum.Material.Slate)
-	banner(176, h + 10, -6, Vector3.new(-1, 0, 0), props)
-	banner(176, h + 10, 6, Vector3.new(-1, 0, 0), props)
-	banner(148, h + 11, 18, Vector3.new(0, 0, -1), props)
-	banner(160, h + 11, -18, Vector3.new(0, 0, 1), props)
-	torch(175.6, h + 8, 11, props, Vector3.new(-1, 0, 0))
-	torch(175.6, h + 8, -11, props, Vector3.new(-1, 0, 0))
-	torch(142, h + 8, 17.6, props, Vector3.new(0, 0, -1))
-	torch(142, h + 8, -17.6, props, Vector3.new(0, 0, 1))
-
-	-- ══ SEWER (-6) → ESCAPE PAD ════════════════════════════════
-	local s = -6
-	rampZ("SewerRamp", -34, -20, 100, 106, 0, s, zones)
-	floor("SewerFloor", 100, 106, -76, -34, s, zones, Enum.Material.Concrete)
-	for _, sx in { 99.3, 106.7 } do
-		box("SewerWall", sx, s + 5, -48, 1.4, 10, 56, Palette.stone, zones, Enum.Material.Concrete)
+	for _, side in { 1, -1 } do
+		box("BronnLedge", 220, h + 0.75, side * 16, 28, 1.5, 4, Palette.stone, zones, Enum.Material.Slate)
+		rampX("BronnLedgeRamp", 202.5, 206, side * 14, side * 18, h, h + 1.5, zones)
 	end
-	box("SewerWallEnd", 103, s + 5, -76.7, 8.8, 10, 1.4, Palette.stone, zones, Enum.Material.Concrete)
-	-- A drain channel down the middle: the floor reads as a sewer, not another corridor.
-	decor(box("SewerChannel", 103, s + 0.05, -55, 1.6, 0.1, 40, Palette.pitch, props, Enum.Material.Glass))
-	torch(100.2, s + 5, -40, props, Vector3.new(1, 0, 0))
-	torch(105.8, s + 5, -58, props, Vector3.new(-1, 0, 0))
+	-- His dais at the far end: he stands above you, and it reads as his room.
+	box("HallDais", 238, h + 0.5, 0, 14, 1, 18, Palette.stone, zones, Enum.Material.Slate)
+	banner(246, h + 10, -6, Vector3.new(-1, 0, 0), props)
+	banner(246, h + 10, 6, Vector3.new(-1, 0, 0), props)
+	banner(218, h + 11, 18, Vector3.new(0, 0, -1), props)
+	banner(230, h + 11, -18, Vector3.new(0, 0, 1), props)
+	torch(245.6, h + 8, 11, props, Vector3.new(-1, 0, 0))
+	torch(245.6, h + 8, -11, props, Vector3.new(-1, 0, 0))
+	torch(212, h + 8, 17.6, props, Vector3.new(0, 0, -1))
+	torch(212, h + 8, -17.6, props, Vector3.new(0, 0, 1))
+
+	-- ══ SEWERS (-6): south from the vault, west to the pad ═════
+	-- Narrow, flooded, claustrophobic. The tension corridor: it must feel unlike anywhere.
+	local s = -6
+	rampZ("SewerRamp", -34, -20.7, 170, 176, 0, s, zones)
+	wall("SewerRampWallW", 169.3, s, -27, 1.4, 16, 14, zones)
+	wall("SewerRampWallE", 176.7, s, -27, 1.4, 16, 14, zones)
+	floor("SewerFloorS", 170, 176, -90, -34, s, zones, Enum.Material.Concrete)
+	ceiling("SewerCeilingS", 170, 176, -90, -34, s + 10, zones)
+	wall("SewerWallSW", 169.3, s, -62, 1.4, 10, 56, zones)
+	wall("SewerWallSE", 176.7, s, -62, 1.4, 10, 56, zones)
+	-- The turn west, and the pad at the far end.
+	floor("SewerFloorW", 118, 176, -96, -90, s, zones, Enum.Material.Concrete)
+	ceiling("SewerCeilingW", 118, 190, -96, -90, s + 10, zones)
+	wall("SewerWallWN", 144, s, -89.3, 52, 10, 1.4, zones)
+	wall("SewerWallWS", 154, s, -96.7, 72, 10, 1.4, zones)
+	wall("SewerWallEnd", 117.3, s, -93, 1.4, 10, 7.4, zones)
+	-- The dark branch east: no torch, a rusted stash at the end (a secret, H5).
+	floor("SewerBranchFloor", 176, 190, -96, -90, s, zones, Enum.Material.Concrete)
+	wall("SewerBranchWallN", 183.5, s, -89.3, 13, 10, 1.4, zones)
+	wall("SewerBranchEnd", 190.7, s, -93, 1.4, 10, 7.4, zones)
+	local sewerStash =
+		box("SewerStash", 188, s + 0.9, -93, 2.4, 1.8, 2, CHEST_WOOD, interact, Enum.Material.CorrodedMetal)
+	-- Water in the channel, both legs.
+	P.water("SewerWater", 170.5, 175.5, -90, -34, s + 0.6, props)
+	P.water("SewerWaterW", 118, 190, -95.5, -90.5, s + 0.6, props)
+	-- A drain line down the middle: the floor reads as a sewer, not another corridor.
+	decor(box("SewerChannel", 173, s + 0.05, -62, 1.6, 0.1, 56, Palette.pitch, props, Enum.Material.Glass))
+	torch(170.2, s + 5, -44, props, Vector3.new(1, 0, 0), 20)
+	torch(175.8, s + 5, -66, props, Vector3.new(-1, 0, 0), 20)
+	torch(175.8, s + 5, -86, props, Vector3.new(-1, 0, 0), 20)
+	torch(150, s + 5, -89.9, props, Vector3.new(0, 0, -1), 20)
+	torch(130, s + 5, -96.1, props, Vector3.new(0, 0, 1), 20)
 
 	-- The escape pad: `escape` green (art §3), dim until the alarm reveals it.
 	local extraction = box(
 		"ExtractionPad",
-		103,
+		124,
 		s + 0.3,
-		-70,
+		-93,
 		6,
 		0.6,
-		6,
+		5,
 		Palette.escape,
 		interact,
 		Enum.Material.SmoothPlastic
@@ -757,8 +545,25 @@ function WorldBuilder.Build()
 	hideoutSpawn.Transparency = 1
 	hideoutSpawn.CanCollide = false
 
-	return {
+	-- ── Secrets that rotate per server (H5): one of these loose bricks is real ──
+	local brickSpots = {
+		CFrame.new(-15, 2.2, 8), -- the cellblock's middle pier
+		CFrame.new(66, 2.2, -6), -- the corridor's south wall
+	}
+	local liveBrick = brickSpots[math.random(1, #brickSpots)]
+	local looseBrick = P.part(
+		"LooseBrick",
+		liveBrick,
+		Vector3.new(1.6, 0.8, 1.6),
+		Palette.stone,
+		interact,
+		Enum.Material.Brick
+	)
+	looseBrick.CanCollide = false
+
+	local refs = {
 		Folder = world,
+		Zones = zones,
 		Interactables = interact,
 		Props = props,
 		CellSpawn = spawnPad,
@@ -766,7 +571,20 @@ function WorldBuilder.Build()
 		WeaponPlank = plank,
 		SpoonProp = spoon,
 		LockedDoor = door,
+		BarDoor = barDoor,
+		DoorBar = doorBar,
+		BarWinch = barWinch,
+		ChandelierWinchW = winchW,
+		ChandelierWinchE = winchE,
 		Chest = chest,
+		BarracksChest = barracksChest,
+		PosternKey = posternKey,
+		PosternGate = posternGate,
+		PosternPad = posternPad,
+		ChapelRelic = relic,
+		Altar = altar,
+		SewerStash = sewerStash,
+		LooseBrick = looseBrick,
 		ExtractionPad = extraction,
 		UpgradePad = upgradePad,
 		ReenterPad = reenterPad,
@@ -776,26 +594,73 @@ function WorldBuilder.Build()
 		-- Named positions other services need
 		CellSpawnCFrame = CFrame.new(-40, 4, 0),
 		HideoutSpawnCFrame = CFrame.new(0, 4, 405),
+		-- Guard room: the patroller (the tutorial fight) and a second guard at the hearth who
+		-- only notices you up close.
 		PatrolGuardSpawn = CFrame.new(28, g + 3, 0),
 		PatrolPointA = Vector3.new(12, g, 0),
 		PatrolPointB = Vector3.new(44, g, 0),
-		AlarmGuardSpawns = { CFrame.new(82, 3, -15), CFrame.new(120, 3, 15) },
-		-- The roster (Section F). An archer on the treasure dais covering the vault; a shield
-		-- guard patrolling the south side, between you and the sewer arch; a sentry in the
-		-- corridor firing across it; hounds loosed into the sewer on the alarm.
-		VaultArcherSpawn = CFrame.lookAt(Vector3.new(111, 4, 17), Vector3.new(90, 4, 0)),
-		VaultShieldSpawn = CFrame.new(96, 3, -11),
-		VaultShieldPatrolA = Vector3.new(84, 0, -12),
-		VaultShieldPatrolB = Vector3.new(116, 0, -12),
-		CorridorSentrySpawn = CFrame.lookAt(Vector3.new(66, 3, 5), Vector3.new(66, 3, -5)),
-		SewerHoundSpawn = CFrame.new(103, -3, -42),
+		HearthGuardSpawn = CFrame.lookAt(Vector3.new(42, g + 3, 10), Vector3.new(42, g + 3, 14)),
+		-- The long hall: two spearmen walking opposite lengths, a sentry on the north balcony
+		-- firing across the hall at the kitchen door's line.
+		HallPatrolSpawns = {
+			{ Spawn = CFrame.new(84, 3, 6), A = Vector3.new(84, 0, 6), B = Vector3.new(128, 0, 6) },
+			{ Spawn = CFrame.new(128, 3, -6), A = Vector3.new(128, 0, -6), B = Vector3.new(84, 0, -6) },
+		},
+		HallSentrySpawn = CFrame.lookAt(
+			Vector3.new(106, balcony + 3, 13),
+			Vector3.new(106, balcony + 3, -13)
+		),
+		-- Kitchen: a cook at the hearth, back to the door.
+		KitchenGuardSpawn = CFrame.lookAt(Vector3.new(124, 3, 41), Vector3.new(124, 3, 45)),
+		-- Barracks: three sleepers on the bunks, a brute between you and the key.
+		BarracksSleeperSpawns = {
+			CFrame.lookAt(Vector3.new(96, b + 3, -44), Vector3.new(96, b + 3, -40)),
+			CFrame.lookAt(Vector3.new(106, b + 3, -44), Vector3.new(106, b + 3, -40)),
+			CFrame.lookAt(Vector3.new(116, b + 3, -44), Vector3.new(116, b + 3, -40)),
+		},
+		BarracksBruteSpawn = CFrame.lookAt(Vector3.new(106, b + 3, -32), Vector3.new(106, b + 3, -21)),
+		-- Vault: the archer on the dais, the shield guard between the door and the sewer arch.
+		AlarmGuardSpawns = { CFrame.new(152, 3, -15), CFrame.new(190, 3, 15) },
+		VaultArcherSpawn = CFrame.lookAt(Vector3.new(181, 4, 17), Vector3.new(160, 4, 0)),
+		VaultShieldSpawn = CFrame.new(166, 3, -11),
+		VaultShieldPatrolA = Vector3.new(154, 0, -12),
+		VaultShieldPatrolB = Vector3.new(186, 0, -12),
+		SewerHoundSpawn = CFrame.new(173, s + 3, -60),
 
 		-- Captain Bronn: on his dais, facing west down the sightline to the cellblock door.
-		CaptainSpawn = CFrame.lookAt(Vector3.new(168, h + 1 + 3.6, 0), Vector3.new(76, h + 1 + 3.6, 0)),
-		CaptainReinforcementSpawn = CFrame.new(172, h + 3, 14),
+		CaptainSpawn = CFrame.lookAt(Vector3.new(238, h + 1 + 3.6, 0), Vector3.new(76, h + 1 + 3.6, 0)),
+		CaptainReinforcementSpawn = CFrame.new(242, h + 3, 14),
 		-- Fight zone: the hall floor east of the threshold, full room height.
-		CaptainArena = { Min = Vector3.new(132, 0, -18), Max = Vector3.new(176, h + 22, 18) },
+		CaptainArena = { Min = Vector3.new(202, 0, -18), Max = Vector3.new(246, h + 22, 18) },
+
+		-- Rooms (RoomService): entered-room tracking for progress, analytics and ambience.
+		-- Boxes are generous so stairs count.
+		Rooms = {
+			{ Name = "THE CELLS", Min = Vector3.new(-46, -2, -10), Max = Vector3.new(0, 14, 18) },
+			{ Name = "THE GUARD ROOM", Min = Vector3.new(8, 0, -15), Max = Vector3.new(48, 18, 15) },
+			{ Name = "THE LONG HALL", Min = Vector3.new(76, -2, -15), Max = Vector3.new(136, 26, 15) },
+			{ Name = "THE KITCHENS", Min = Vector3.new(96, -2, 15), Max = Vector3.new(146, 16, 46) },
+			{ Name = "THE BARRACKS", Min = Vector3.new(86, -5, -48), Max = Vector3.new(126, 12, -15) },
+			{ Name = "THE VAULT", Min = Vector3.new(146, -2, -20), Max = Vector3.new(196, 18, 20) },
+			{
+				Name = "THE CHAPEL",
+				Min = Vector3.new(150, -1, 21),
+				Max = Vector3.new(170, 16, 41),
+				Secret = true,
+			},
+			{ Name = "THE POSTERN", Min = Vector3.new(185, -1, 21), Max = Vector3.new(191, 14, 42) },
+			{ Name = "BRONN'S HALL", Min = Vector3.new(196, 0, -18), Max = Vector3.new(246, 26, 18) },
+			{ Name = "THE SEWERS", Min = Vector3.new(117, -9, -97), Max = Vector3.new(191, 5, -20) },
+		},
 	}
+
+	-- Props, clutter, prisoners, rats, treasure, chandeliers, bunks, candles, the ghost.
+	WorldDressing.Dress(
+		refs,
+		{ Guard = g, Barracks = b, Chapel = c, Bronn = h, Sewer = s, Balcony = balcony }
+	)
+
+	return refs
 end
 
 return WorldBuilder
