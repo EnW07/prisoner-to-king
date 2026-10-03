@@ -72,6 +72,7 @@ local SOUND_IDS = {
 	death = "",
 	bossRoar = "",
 	phaseTransition = "",
+	bossMusic = "", -- looped while a boss fight is on (G3)
 	rankUp = "",
 	-- ui
 	uiClick = "",
@@ -94,6 +95,59 @@ end
 -- Other controllers play hooks through this, so the ID table stays in one place.
 function FeedbackController.PlaySound(name: string, volume: number?)
 	playSound(name, volume)
+end
+
+-- One looping music track at a time. A blank id, or nil, means silence.
+local music: Sound? = nil
+local musicName: string? = nil
+function FeedbackController.SetMusic(name: string?)
+	if name == musicName then
+		return
+	end
+	musicName = name
+	if music then
+		music:Stop()
+		music:Destroy()
+		music = nil
+	end
+	local id = name and SOUND_IDS[name]
+	if not id or id == "" then
+		return
+	end
+	local s = Instance.new("Sound")
+	s.Name = "PTK_Music"
+	s.SoundId = id
+	s.Looped = true
+	s.Volume = 0.5 * (ClientSettings.Get("MusicVolume") or 1)
+	s.Parent = SoundService
+	s:Play()
+	music = s
+end
+
+-- A full-screen flash (the boss phase transition). Starts white-hot, fades out.
+local flashGui: ScreenGui? = nil
+local function screenFlash(color: Color3, time: number)
+	if not flashGui then
+		local g = Instance.new("ScreenGui")
+		g.Name = "PTK_Flash"
+		g.ResetOnSpawn = false
+		g.IgnoreGuiInset = true
+		g.DisplayOrder = 15
+		g.Parent = player:WaitForChild("PlayerGui")
+		local f = Instance.new("Frame")
+		f.Name = "Flash"
+		f.Size = UDim2.fromScale(1, 1)
+		f.BorderSizePixel = 0
+		f.BackgroundTransparency = 1
+		f.Parent = g
+		flashGui = g
+	end
+	local frame = (flashGui :: ScreenGui):FindFirstChild("Flash") :: Frame
+	frame.BackgroundColor3 = color
+	frame.BackgroundTransparency = 0.15
+	TweenService:Create(frame, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 1,
+	}):Play()
 end
 
 -- 0 at nothing, 1 at HeavyHitDamage and above.
@@ -273,8 +327,13 @@ local function onDealt(data)
 	local numberScale = 1 + (FEEL.NumberScaleMax - 1) * s + (if data.Killed then FEEL.KillNumberBonus else 0)
 	damageNumber(data.Position, data.Damage, UIStyle.TEXT, numberScale)
 	if data.Killed then
-		HitStop.Freeze(FEEL.HeavyHitStopTime * math.max(scale, 1))
-		cameraKick(FEEL.KickKill)
+		-- A boss's final blow (G3): the longest freeze in the game, then the held beat the
+		-- server keeps before the body falls.
+		local boss = data.Target and data.Target:GetAttribute("Boss") == true
+		HitStop.Freeze(
+			if boss then GameConfig.Captain.DeathHold * 0.35 else FEEL.HeavyHitStopTime * math.max(scale, 1)
+		)
+		cameraKick(if boss then GameConfig.Captain.PhaseKick else FEEL.KickKill)
 		playSound("kill")
 	else
 		HitStop.Freeze(FEEL.HitStopTime * scale)
@@ -313,9 +372,10 @@ function FeedbackController.Init()
 			playSound("dodge", 0.7)
 		elseif data.Kind == "blocked" then
 			-- A shield took it (F3): a clang, stone sparks, and the attacker recoils. The
-			-- normal attack simply does not work here; that must be unmistakable.
+			-- normal attack simply does not work here; that must be unmistakable. An immune
+			-- boss (mid-roar) only sparks.
 			sparks(data.Position, FEEL.SparkCountHeavy, Palette.stone)
-			if data.Attacker == player.UserId then
+			if data.Attacker == player.UserId and not data.Immune then
 				floatingText(data.Position, "BLOCKED", UIStyle.TEXT, 1.1)
 				cameraKick(FEEL.KickTaken)
 				HitStop.Freeze(FEEL.HitStopTime)
@@ -334,6 +394,18 @@ function FeedbackController.Init()
 			playSound("alarm", 0.8)
 		elseif data.Kind == "enemyAlert" then
 			playSound("enemyAlert", 0.6)
+		elseif data.Kind == "bossIntro" then
+			FeedbackController.SetMusic("bossMusic")
+			playSound("bossRoar", 0.8)
+		elseif data.Kind == "bossPhase" then
+			-- The moment (G1): a flash, a hard camera push, the sting.
+			screenFlash(Palette.ember, GameConfig.Captain.PhaseFlashTime)
+			cameraKick(GameConfig.Captain.PhaseKick)
+			HitStop.Freeze(FEEL.HeavyHitStopTime)
+			playSound("phaseTransition", 1)
+			playSound("bossRoar", 0.9)
+		elseif data.Kind == "bossDefeated" or data.Kind == "bossReset" then
+			FeedbackController.SetMusic(nil)
 		end
 	end)
 

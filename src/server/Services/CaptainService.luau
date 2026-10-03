@@ -54,6 +54,8 @@ type Fight = {
 	NextAttackAt: number,
 	LastTargetAt: number,
 	Reinforced: boolean,
+	Phase: number, -- 1, then 2 after the transition (G1)
+	Fire: Fire?, -- the ignited greatsword
 	Engaged: { [number]: boolean },
 	Markers: { BasePart },
 }
@@ -216,15 +218,29 @@ local function setTelegraph(f: Fight, attackName: string?)
 		f.Highlight.Enabled = on
 	end
 	if f.Sword then
-		f.Sword.Material = if on then Enum.Material.Neon else Enum.Material.Metal
-		f.Sword.Color = if on then Palette.bleed else Palette.stone
+		-- In phase two the sword stays lit (it burns); the telegraph is the outline.
+		local lit = on or f.Phase >= 2
+		f.Sword.Material = if lit then Enum.Material.Neon else Enum.Material.Metal
+		f.Sword.Color = if lit then Palette.bleed else Palette.stone
 	end
 	f.Record.Model:SetAttribute("Callout", if attackName then attackName .. "!" else "")
 end
 
+-- The attack timings for the current phase.
+local function timeScale(f: Fight): number
+	local phase = f.Record.Config.PhaseTwo
+	return if f.Phase >= 2 and phase then phase.TimeScale else 1
+end
+
+local function rotationFor(f: Fight): { string }
+	local cfg = f.Record.Config
+	local phase = cfg.PhaseTwo
+	return if f.Phase >= 2 and phase then phase.Rotation else cfg.Rotation
+end
+
 -- Paints the exact hit area on the floor for the whole wind-up. What you see is precisely
 -- what the server will test: both use the same `origin` and the same attack data.
-local function makeMarker(f: Fight, attack, origin: CFrame, reach: number): BasePart
+local function makeMarker(f: Fight, attack, origin: CFrame, reach: number, windUp: number): BasePart
 	-- His feet: root centre minus hip height and half the root. Correct at any rig scale.
 	local root = f.Record.Model.PrimaryPart :: BasePart
 	local drop = (f.Record.Humanoid :: Humanoid).HipHeight + root.Size.Y / 2
@@ -254,7 +270,7 @@ local function makeMarker(f: Fight, attack, origin: CFrame, reach: number): Base
 	table.insert(f.Markers, p)
 
 	-- The area "fills in" as the swing approaches: fainter early, solid just before impact.
-	TweenService:Create(p, TweenInfo.new(attack.WindUp, Enum.EasingStyle.Linear), {
+	TweenService:Create(p, TweenInfo.new(windUp, Enum.EasingStyle.Linear), {
 		Transparency = TUNE.TelegraphTransparency,
 	}):Play()
 	return p
@@ -339,6 +355,10 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	hum:MoveTo(root.Position)
 	local origin = facing(root.Position, aim)
 	root.CFrame = origin
+	-- Phase two runs modestly faster. Every timing below uses these, including the marker.
+	local scale = timeScale(f)
+	local windUp = attack.WindUp * scale
+	local recovery = attack.Recovery * scale
 
 	local reach = attack.Length or 0
 	local destination = root.Position
@@ -347,7 +367,7 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 		reach = flatDistance(root.Position, destination)
 	end
 
-	local marker = makeMarker(f, attack, origin, reach)
+	local marker = makeMarker(f, attack, origin, reach, windUp)
 	setTelegraph(f, attack.Name)
 	-- The whole attack is one move with its phases filled from the attack's own timings:
 	--   Wind     the wind-up pose, snapped into then drawn deeper until the release
@@ -356,15 +376,15 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	--            the run pose held for the whole dash)
 	--   Recover  a slow, heavy return: the punish window, visibly
 	-- An AnimationConfig clip for this move replaces all of it with no change here.
-	local lead = math.min(GameConfig.Animation.StrikeLead, attack.WindUp * 0.4)
+	local lead = math.min(GameConfig.Animation.StrikeLead, windUp * 0.4)
 	local strikeTime = if attack.Shape == "Charge" then reach / TUNE.ChargeSpeed else TUNE.ImpactPause
 	EnemyAnimator.PlayAction(record, attackId, {
-		Wind = attack.WindUp - lead,
+		Wind = windUp - lead,
 		Strike = lead + strikeTime,
-		Recover = attack.Recovery,
+		Recover = recovery,
 	})
 
-	task.wait(attack.WindUp)
+	task.wait(windUp)
 
 	if cut() then
 		removeMarker(f, marker)
@@ -389,7 +409,7 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	end
 	-- Recovery: he stands still while the move's Recover phase plays out. This is the
 	-- player's punish window.
-	task.wait(attack.Recovery)
+	task.wait(recovery)
 	if cut() then
 		return
 	end
@@ -409,23 +429,113 @@ local function engage(f: Fight, player: Player)
 	ctx.Analytics.Log(player, "CaptainEngaged", 1, { weapon = weaponId(player), run = runIndex(player) })
 	-- Spell out the choice the whole game is built on: fight for the reward, or leave with
 	-- what you're carrying (art §7 verbs: STEAL, ESCAPE).
+	-- The title card (G3): name and title, once per session on the client, skippable.
 	Notify:FireClient(player, {
 		Text = "CAPTAIN BRONN",
 		Sub = "STEAL HIS SWORD — OR ESCAPE WITH YOUR LOOT",
-		Kind = "alarm",
+		Kind = "bossIntro",
+		Title = "KEEPER OF THE VAULT",
 	})
 end
 
 -- No one left in the hall long enough: walk home and heal fully. Stops the step-in,
 -- hit, step-out pattern from whittling him down for free.
+-- Back to phase one: the sword goes out, the rotation resets.
+local function leavePhaseTwo(f: Fight)
+	f.Phase = 1
+	if f.Fire then
+		f.Fire.Enabled = false
+	end
+	setTelegraph(f, nil)
+	notifyEngaged(f, { Text = "", Kind = "bossReset" })
+end
+
 local function reset(f: Fight)
 	dismissReinforcements()
 	f.InFight = false
 	f.Reinforced = false
 	f.RotationIndex = 1
+	leavePhaseTwo(f)
 	table.clear(f.Engaged)
 	local hum: Humanoid = f.Record.Humanoid
 	hum.Health = hum.MaxHealth
+end
+
+-- THE MOMENT (G1): at half health, once. Whatever he was doing stops; he is invulnerable
+-- while he roars; his armour lights, the greatsword ignites, a guard is called; then his
+-- attacks come faster and the rotation gains the Flame Sweep. Clients get one event to
+-- flash, push the camera and play the sting.
+local function enterPhaseTwo(f: Fight)
+	local record = f.Record
+	f.Phase = 2
+	f.Interrupt += 1 -- cuts any attack in flight
+	for _, marker in f.Markers do
+		marker:Destroy()
+	end
+	table.clear(f.Markers)
+	f.Busy = true
+	record.Attacking = true
+	record.Invulnerable = true
+	local hum: Humanoid = record.Humanoid
+	hum.WalkSpeed = 0
+	hum:MoveTo((record.Model.PrimaryPart :: BasePart).Position)
+
+	-- The look: outline on, sword lit, and fire on the blade. Fire is an old, stable class.
+	if f.Highlight then
+		f.Highlight.Enabled = true
+	end
+	setTelegraph(f, nil)
+	if f.Sword and not f.Fire then
+		local fire = Instance.new("Fire")
+		fire.Color = Palette.ember
+		fire.SecondaryColor = Palette.bleed
+		fire.Size = 5
+		fire.Heat = 12
+		fire.Parent = f.Sword
+		f.Fire = fire
+	elseif f.Fire then
+		f.Fire.Enabled = true
+	end
+	record.Model:SetAttribute("Callout", "")
+	record.Model:SetAttribute("Phase", 2)
+
+	EnemyAnimator.PlayAction(record, "Roar")
+	notifyEngaged(f, { Text = "BRONN ROARS", Sub = "HIS BLADE IGNITES", Kind = "bossPhase" })
+	for userId in f.Engaged do
+		local player = Players:GetPlayerByUserId(userId)
+		if player then
+			ctx.Analytics.Log(
+				player,
+				"CaptainPhaseTwo",
+				1,
+				{ weapon = weaponId(player), run = runIndex(player) }
+			)
+		end
+	end
+
+	-- The reinforcement, called during the roar.
+	dismissReinforcements()
+	local guard = ctx.EnemyService.Spawn(TUNE.ReinforcementEnemy, world.CaptainReinforcementSpawn, {
+		Respawn = false,
+	})
+	if guard then
+		table.insert(reinforcements, guard)
+	end
+
+	task.delay(TUNE.PhaseRoarTime, function()
+		if not alive(f) then
+			return
+		end
+		record.Invulnerable = false
+		record.Attacking = false
+		f.Busy = false
+		f.RotationIndex = 1
+		hum.WalkSpeed = record.Config.MoveSpeed
+		f.NextAttackAt = os.clock() + record.Config.AttackCooldown
+		if f.Highlight then
+			f.Highlight.Enabled = false
+		end
+	end)
 end
 
 local function idle(f: Fight, now: number)
@@ -497,8 +607,9 @@ local function think(record, _dt: number)
 	local cfg = record.Config
 	if now >= f.NextAttackAt then
 		if best <= cfg.AttackRange then
-			local name = cfg.Rotation[f.RotationIndex]
-			f.RotationIndex = f.RotationIndex % #cfg.Rotation + 1
+			local rotation = rotationFor(f)
+			local name = rotation[f.RotationIndex]
+			f.RotationIndex = f.RotationIndex % #rotation + 1
 			task.spawn(performAttack, f, name, cfg.Attacks[name], target.Position)
 			return
 		end
@@ -532,18 +643,10 @@ local function onDamaged(record, attacker: Player)
 	engage(f, attacker)
 
 	local hum: Humanoid = record.Humanoid
-	if not f.Reinforced and hum.Health > 0 and hum.Health <= hum.MaxHealth * TUNE.ReinforcementAtHealth then
+	local phase = record.Config.PhaseTwo
+	if phase and not f.Reinforced and hum.Health > 0 and hum.Health <= hum.MaxHealth * phase.AtHealth then
 		f.Reinforced = true
-		dismissReinforcements()
-		local guard = ctx.EnemyService.Spawn(
-			TUNE.ReinforcementEnemy,
-			world.CaptainReinforcementSpawn,
-			{ Respawn = false }
-		)
-		if guard then
-			table.insert(reinforcements, guard)
-		end
-		notifyEngaged(f, { Text = "BRONN CALLS A GUARD!", Kind = "alarm" })
+		enterPhaseTwo(f)
 	end
 end
 
@@ -568,6 +671,8 @@ local function onKilled(record, killer: Player?)
 	end
 	table.clear(f.Markers)
 	setTelegraph(f, nil)
+	record.Model:SetAttribute("Callout", "")
+	notifyEngaged(f, { Text = "", Kind = "bossDefeated" })
 
 	if killer then
 		ctx.Analytics.Log(killer, "CaptainKilled", 1, { weapon = weaponId(killer), run = runIndex(killer) })
@@ -661,6 +766,9 @@ function CaptainService.Spawn()
 
 	-- What clients need to draw his boss bar (name, health from the Humanoid, callout).
 	local model: Model = record.Model
+	-- PhaseAt before Boss: the client builds the bar on Boss and reads PhaseAt as it does.
+	model:SetAttribute("PhaseAt", record.Config.PhaseTwo and record.Config.PhaseTwo.AtHealth or 0)
+	model:SetAttribute("Phase", 1)
 	model:SetAttribute("Boss", true)
 	model:SetAttribute("BossName", record.Config.DisplayName:upper())
 	model:SetAttribute("Callout", "")
@@ -685,6 +793,8 @@ function CaptainService.Spawn()
 		NextAttackAt = 0,
 		LastTargetAt = 0,
 		Reinforced = false,
+		Phase = 1,
+		Fire = nil,
 		Engaged = {},
 		Markers = {},
 	}

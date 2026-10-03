@@ -129,6 +129,24 @@ local function bobLoot(dt: number)
 	end
 end
 
+-- ── Trophies (G3) ──────────────────────────────────────────────
+-- The hideout is shared; a trophy is yours. Tagged parts carry a Trophy attribute naming
+-- the kill; StateUpdate says whether THIS player has it, and the parts show or hide locally.
+local trophyCounts: { [string]: number } = {}
+
+local function refreshTrophies()
+	for _, part in CollectionService:GetTagged("PTKTrophy") do
+		if part:IsA("BasePart") then
+			local key = tostring(part:GetAttribute("Trophy") or "")
+			local earned = (trophyCounts[key] or 0) > 0
+			local target = if earned then 0 else 1
+			if part.Transparency ~= target then
+				TweenService:Create(part, TweenInfo.new(0.6), { Transparency = target }):Play()
+			end
+		end
+	end
+end
+
 -- ── Init ────────────────────────────────────────────────────────
 function WorldFXController.Init()
 	for _, flame in CollectionService:GetTagged("PTKTorch") do
@@ -151,7 +169,10 @@ function WorldFXController.Init()
 
 	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
 		setLid(state.ChestOpened == true)
+		trophyCounts.captain = state.CaptainKills or 0
+		refreshTrophies()
 	end)
+	CollectionService:GetInstanceAddedSignal("PTKTrophy"):Connect(refreshTrophies)
 
 	RunService.RenderStepped:Connect(function(dt)
 		flickerTorches(dt)

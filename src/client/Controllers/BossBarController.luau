@@ -18,10 +18,12 @@
 -- head: it renders once.
 
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
+local Net = require(Shared:WaitForChild("Net"))
 local GameConfig = require(Config:WaitForChild("GameConfig"))
 local Palette = require(Config:WaitForChild("Palette"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
@@ -150,6 +152,29 @@ local function build(model: Model)
 	fill.Parent = bar
 	local healthText = label(bar, "", UDim2.fromScale(1, 1), UDim2.new(), 18, UIStyle.TEXT)
 	healthText.ZIndex = 2
+	-- Segment marker at the phase threshold (G3): the player sees the transition coming.
+	local phaseAt = tonumber(model:GetAttribute("PhaseAt")) or 0
+	if phaseAt > 0 and phaseAt < 1 then
+		local tick = Instance.new("Frame")
+		tick.Name = "PhaseMark"
+		tick.AnchorPoint = Vector2.new(0.5, 0)
+		tick.Position = UDim2.fromScale(phaseAt, 0)
+		tick.Size = UDim2.new(0, 3, 1, 0)
+		tick.BackgroundColor3 = UIStyle.TEXT
+		tick.BorderSizePixel = 0
+		tick.ZIndex = 3
+		tick.Parent = bar
+	end
+	-- Phase two: the bar's fill turns ember and flashes once.
+	model:GetAttributeChangedSignal("Phase"):Connect(function()
+		local phase = tonumber(model:GetAttribute("Phase")) or 1
+		fill.BackgroundColor3 = if phase >= 2 then Palette.ember else Palette.bleed
+		if phase >= 2 then
+			bar.BackgroundColor3 = UIStyle.TEXT
+			TweenService:Create(bar, TweenInfo.new(TUNE.PhaseFlashTime), { BackgroundColor3 = Palette.pitch })
+				:Play()
+		end
+	end)
 
 	local callout = label(gui, "", UDim2.new(1, 0, 0, 38), UDim2.fromOffset(0, 58), 32, Palette.bleed)
 	callout.Visible = false
@@ -211,7 +236,74 @@ local function watch(model: Instance)
 	end)
 end
 
+-- ── Title card (G3): name and title on first encounter, once per session, skippable ──
+local introduced: { [string]: boolean } = {}
+
+local function titleCard(name: string, title: string)
+	if introduced[name] then
+		return
+	end
+	introduced[name] = true
+	local UI = GameConfig.UI
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "PTK_BossIntro"
+	gui.ResetOnSpawn = false
+	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	gui.DisplayOrder = 8
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	local panel, content = UIStyle.Panel(
+		"CanvasGroup",
+		"Card",
+		gui,
+		UDim2.fromScale(0.6, 0.2),
+		UDim2.fromScale(0.5, 0.34),
+		Vector2.new(0.5, 0.5)
+	)
+	UIStyle.SetDanger(panel, true)
+	UIStyle.List(content, Enum.FillDirection.Vertical, UDim.new(0.04, 0))
+	local nameLabel = UIStyle.Text("Name", content, name, UDim2.fromScale(1, 0.6), nil, 64, Palette.bleed)
+	nameLabel.LayoutOrder = 1
+	local titleLabel = UIStyle.Text("Title", content, title, UDim2.fromScale(1, 0.34), nil, 30)
+	titleLabel.Font = UIStyle.BODY_FONT
+	titleLabel.LayoutOrder = 2
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1.15
+	scale.Parent = panel
+	panel.GroupTransparency = 1
+
+	local done = false
+	local function dismiss()
+		if done then
+			return
+		end
+		done = true
+		local out = TweenService:Create(panel, TweenInfo.new(UI.OverlayOutTime), { GroupTransparency = 1 })
+		out.Completed:Connect(function()
+			gui:Destroy()
+		end)
+		out:Play()
+	end
+	-- Tap anywhere on it to skip (§81: never trap the player).
+	local hit = Instance.new("TextButton")
+	hit.Size = UDim2.fromScale(1, 1)
+	hit.BackgroundTransparency = 1
+	hit.Text = ""
+	hit.ZIndex = 4
+	hit.Parent = panel
+	hit.Activated:Connect(dismiss)
+
+	TweenService:Create(panel, TweenInfo.new(UI.OverlayInTime), { GroupTransparency = 0 }):Play()
+	TweenService:Create(scale, TweenInfo.new(UI.OverlayInTime, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	task.delay(UI.OverlayInTime + UI.OverlayHoldTime, dismiss)
+end
+
 function BossBarController.Init()
+	Net.Event("Notify").OnClientEvent:Connect(function(data)
+		if data.Kind == "bossIntro" and data.Text then
+			titleCard(data.Text, tostring(data.Title or ""))
+		end
+	end)
 	task.spawn(function()
 		local enemies = workspace:WaitForChild("Enemies")
 		for _, model in enemies:GetChildren() do

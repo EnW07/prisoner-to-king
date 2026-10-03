@@ -91,6 +91,9 @@ function EconomyService.PushState(player: Player)
 		RunState = run and run.State or "Safe",
 		WeaponUpgradeLevel = profile.Castle.WeaponRackLevel or 0,
 		TotalEscapes = profile.Meta.TotalEscapes or 0,
+		-- Trophies (G3). Meta.CaptainKills is written only once the SchemaVersion 2 migration
+		-- lands (Section L5); until then this reads 0 and the trophy stays hidden.
+		CaptainKills = profile.Meta.CaptainKills or 0,
 
 		-- Per-player prompt state. Prompt.Enabled is replicated (shared), so the client gates
 		-- its own prompts from these fields instead. (M1 bugs 1/2/4/5.)
