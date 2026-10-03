@@ -310,7 +310,20 @@ function EnemyAnimator.AttackPhase(record, phase: string, duration: number)
 		end
 	elseif phase == "Recover" then
 		if not state.UsingClip then
-			poseTo(state, ArmPose.Chop.Rest, duration * ANIM.EnemyRecoverShare, Q, Enum.EasingDirection.InOut)
+			-- Let the strike arc land and HOLD a beat before the slow return. Starting the
+			-- return straight away would cancel the strike tween before it ever rendered.
+			local land = ANIM.EnemyStrikeTime + ANIM.EnemyImpactHold
+			task.delay(land, function()
+				if states[record] == state and record.State == "Recover" then
+					poseTo(
+						state,
+						ArmPose.Chop.Rest,
+						math.max(duration * ANIM.EnemyRecoverShare - land, 0.05),
+						Q,
+						Enum.EasingDirection.InOut
+					)
+				end
+			end)
 		end
 	end
 end
