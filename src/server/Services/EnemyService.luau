@@ -333,6 +333,17 @@ function EnemyService.Kill(record, killer: Player?)
 	end
 end
 
+-- Remove a living enemy without a kill: no loot, no analytics, no respawn. For enemies
+-- whose reason to exist has gone (e.g. Bronn's reinforcement after he resets).
+function EnemyService.Despawn(record)
+	local model = record.Model
+	if active[model] then
+		active[model] = nil
+		record.State = "Dead"
+		model:Destroy()
+	end
+end
+
 function EnemyService.ClearAll()
 	for model in active do
 		active[model] = nil
