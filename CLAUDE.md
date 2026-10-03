@@ -49,6 +49,14 @@ Milestone 2 starts only after the closed-alpha funnel gates in `docs/MILESTONE_1
 met — in particular **second-run rate above 45%**. If testers don't voluntarily go back into
 the dungeon, adding content does not fix it.
 
+**Decision 2026-10-03: M2 proceeds with the gate unmet. This is a deliberate decision, not
+a bypass.** The measured second-run rate was effectively 0%: in the developer self-test
+(2026-08-11), run 2 was byte-identical to run 1 and the tester did not want it. The gate
+exists to stop content being piled onto a loop that *already works*. It was never meant to
+freeze development on a loop that doesn't. `docs/M2_BRIEF.md` is scoped as the remedy for
+the failed gate: a reason, a risk and a variance for run 2, and nothing else. Don't
+re-litigate this. The gate still applies to M3 — measure second-run rate after M2 playtests.
+
 ## Before committing
 
 ```bash
