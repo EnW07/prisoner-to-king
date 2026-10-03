@@ -23,6 +23,7 @@ ctx.Economy = require(Services.EconomyService)
 ctx.RunState = require(Services.RunStateService)
 ctx.LootService = require(Services.LootService)
 ctx.EnemyService = require(Services.EnemyService)
+ctx.Captain = require(Services.CaptainService)
 ctx.Combat = require(Services.CombatService)
 ctx.Extraction = require(Services.ExtractionService)
 ctx.Upgrade = require(Services.UpgradeService)
@@ -41,6 +42,7 @@ ctx.Economy.Init(ctx)
 ctx.RunState.Init(ctx)
 ctx.LootService.Init(ctx)
 ctx.EnemyService.Init(ctx)
+ctx.Captain.Init(ctx, world)
 ctx.Combat.Init(ctx)
 ctx.Extraction.Init(ctx, world)
 ctx.Upgrade.Init(ctx, world)
@@ -53,6 +55,8 @@ ctx.EnemyService.Spawn("sleepy_guard", world.PatrolGuardSpawn, {
 	Respawn = true,
 	SpawnCFrame = world.PatrolGuardSpawn,
 })
+-- M2: Captain Bronn waits in his hall off the vault. (M2 brief item 1)
+ctx.Captain.Spawn()
 
 -- ── 4. Players always start in the cell. ──
 Players.PlayerAdded:Connect(function(player)

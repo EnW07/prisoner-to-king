@@ -8,15 +8,21 @@
 --
 -- Layout (top-down, +X is "deeper into the castle"):
 --
---   CELL (-20..0)  ──corridor(0..60)──  [LOCKED DOOR]  VAULT ROOM (60..100)
+--   CELL (-20..0)  ──corridor(0..60)──  [LOCKED DOOR]  VAULT ROOM (60..100) ═arch═ CAPTAIN'S HALL (101..141)
 --                                                            │
 --                                                       sewer tunnel
 --                                                            │
 --                                                     EXTRACTION PAD
 --
+--   The hall sits on the same z = 0 sightline as the cellblock door, so Captain Bronn is in
+--   view the moment the door opens on run 1. He never leaves his hall, so he can't block
+--   the chest or the escape route (§115): fighting him is always a choice.
+--
 --   HIDEOUT sits far away at z=400 (separate safe area, same place file — §77).
 
 local Lighting = game:GetService("Lighting")
+
+local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 
 local WorldBuilder = {}
 
@@ -184,7 +190,10 @@ function WorldBuilder.Build()
 	-- ══ VAULT ROOM ═════════════════════════════════════════════
 	box("VaultFloor", 80.5, -0.5, 0, 40, 1, 30, DARK, zones)
 	box("VaultWallN", 80.5, 6, 15.5, 41, 12, 1, STONE, zones)
-	box("VaultWallE", 101, 6, 0, 1, 12, 32, STONE, zones)
+	-- East wall split around a 12-wide, 10-tall archway into the Captain's hall.
+	box("VaultWallE1", 101, 6, 11, 1, 12, 10, STONE, zones)
+	box("VaultWallE2", 101, 6, -11, 1, 12, 10, STONE, zones)
+	box("VaultArchLintel", 101, 11, 0, 1, 2, 12, STONE, zones)
 	box("VaultWallW1", 60.5, 6, 11.75, 1, 12, 7.5, STONE, zones)
 	box("VaultWallW2", 60.5, 6, -11.75, 1, 12, 7.5, STONE, zones)
 	-- South wall with a 6-stud sewer opening at x = 90..96
@@ -195,6 +204,23 @@ function WorldBuilder.Build()
 
 	local chest =
 		box("Chest", 80.5, 1.5, 8, 4, 3, 3, Color3.fromRGB(120, 85, 50), interact, Enum.Material.WoodPlanks)
+
+	-- ══ CAPTAIN'S HALL (M2) ════════════════════════════════════
+	box("HallFloor", 121.5, -0.5, 0, 41, 1, 30, Palette.pitch, zones)
+	box("HallWallN", 121.5, 7, 15.5, 41, 14, 1, Palette.stone, zones)
+	box("HallWallS", 121.5, 7, -15.5, 41, 14, 1, Palette.stone, zones)
+	box("HallWallE", 142.5, 7, 0, 1, 14, 32, Palette.stone, zones)
+	-- The line you cross to start the fight. Colour is backed by the archway itself and the
+	-- banner on entry, so this is never the only signal (art §3).
+	local threshold =
+		box("HallThreshold", 102.5, 0.03, 0, 1, 0.06, 12, Palette.bleed, props, Enum.Material.Neon)
+	threshold.CanCollide = false
+	-- His dais at the far end, so he reads as "the thing in this room" from the vault.
+	box("HallDais", 134, 0.25, 0, 10, 0.5, 14, Palette.stone, zones)
+	torch(141.5, 8, 9, props)
+	torch(141.5, 8, -9, props)
+	torch(118, 8, 14.8, props)
+	torch(118, 8, -14.8, props)
 
 	-- ══ SEWER TUNNEL → EXTRACTION ══════════════════════════════
 	box("SewerFloor", 93, -0.5, -33, 6, 1, 37, Color3.fromRGB(60, 62, 55), zones, Enum.Material.Concrete)
@@ -261,6 +287,12 @@ function WorldBuilder.Build()
 		PatrolPointA = Vector3.new(12, 0, 0),
 		PatrolPointB = Vector3.new(50, 0, 0),
 		AlarmGuardSpawns = { CFrame.new(66, 3, -10), CFrame.new(96, 3, 10) },
+
+		-- Captain Bronn: faces west, down the sightline to the cellblock door.
+		CaptainSpawn = CFrame.lookAt(Vector3.new(130, 4.5, 0), Vector3.new(60, 4.5, 0)),
+		CaptainReinforcementSpawn = CFrame.new(138, 3, 11),
+		-- Fight zone: the hall floor east of the threshold, full room height.
+		CaptainArena = { Min = Vector3.new(102, -2, -15), Max = Vector3.new(142, 20, 15) },
 	}
 end
 

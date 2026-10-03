@@ -42,6 +42,8 @@ local GameConfig = {
 		-- Fraction of UNSECURED gold lost on death. Equipped gear is never lost. (§14)
 		DeathUnsecuredLossPercent = 1.0,
 		AlarmGuardCount = 2,
+		-- The CAPTURED screen names the attack that killed you if it landed this recently.
+		DeathAttributionWindow = 10, -- seconds
 	},
 
 	-- ── Economy (§25 placeholders) ──────────────────────────────
@@ -59,6 +61,28 @@ local GameConfig = {
 		RespawnDelay = 25,
 		CorpseDespawn = 3,
 		LeashDistance = 90,
+	},
+
+	-- ── Captain Bronn (M2) ──────────────────────────────────────
+	-- His stats and moveset are in EnemyConfig.captain_bronn. These values tune the encounter.
+	Captain = {
+		RespawnDelay = 60, -- after being killed
+		-- With no player left in his hall for this long, he walks home and heals to full.
+		-- Stops step-in / hit / step-out cheese.
+		ResetDelay = 4,
+		ReinforcementAtHealth = 0.5, -- fraction of MaxHealth; one call per fight
+		ReinforcementEnemy = "alarm_guard",
+		ChargeSpeed = 48, -- studs/s during the dash
+		-- He only charges a target at least this far away, so it punishes kiting rather than
+		-- every step back from a Cleave.
+		ChargeMinRange = 14,
+		HitHeightTolerance = 6, -- vertical slack on hit shapes
+		-- When idle, he turns to watch the nearest player within this range (vault included).
+		WatchRange = 90,
+		HomeTolerance = 2, -- studs from his spawn point that count as "home"
+		NameplateMaxDistance = 220, -- readable from the cellblock door, ~70 studs away
+		TelegraphTransparency = 0.45,
+		StrikeFlashTime = 0.15,
 	},
 
 	-- ── Analytics ───────────────────────────────────────────────

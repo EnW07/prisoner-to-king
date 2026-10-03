@@ -195,6 +195,15 @@ function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Pl
 	local gold = math.random(cfg.GoldMin, cfg.GoldMax)
 	LootService.Spawn("Gold", position, gold)
 
+	-- Guaranteed drops (e.g. Captain Bronn's Guard Sword). Weapons belong to the killer, so a
+	-- bystander can't walk off with the reward for someone else's fight.
+	local tableDef = LootConfig.Tables[cfg.LootTable]
+	if tableDef and tableDef.Guaranteed then
+		for _, entry in tableDef.Guaranteed do
+			LootService.Spawn(entry.Kind, position, entry.Id, killer and killer.UserId or nil)
+		end
+	end
+
 	for _, entry in LootService.RollTable(cfg.LootTable) do
 		if entry.Kind == "Gold" then
 			LootService.Spawn("Gold", position, math.random(entry.Min or 1, entry.Max or 1))
