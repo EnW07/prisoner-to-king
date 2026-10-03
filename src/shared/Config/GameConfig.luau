@@ -9,7 +9,9 @@ local GameConfig = {
 	-- ── Persistence ─────────────────────────────────────────────
 	Data = {
 		StoreName = "PTK_PlayerProfile", -- bump only for a hard reset
-		SchemaVersion = 1,
+		-- 2 (2026-10-03): Meta.CaptainKills (the hideout trophy) and Meta.LuckCharge (the
+		-- pity meter). See PlayerDataService.migrate.
+		SchemaVersion = 2,
 		AutosaveInterval = 120, -- seconds
 		SaveRetries = 4,
 		SaveRetryBackoff = 2, -- seconds, multiplied each retry

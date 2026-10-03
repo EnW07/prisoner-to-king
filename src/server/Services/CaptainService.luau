@@ -692,6 +692,13 @@ local function onKilled(record, killer: Player?)
 	notifyEngaged(f, { Text = "", Kind = "bossDefeated" })
 
 	if killer then
+		-- Schema 2: the trophy count. The hideout's helm shows for CaptainKills > 0.
+		local profile = ctx.Data.Get(killer)
+		if profile and profile.Meta then
+			profile.Meta.CaptainKills = (profile.Meta.CaptainKills or 0) + 1
+			ctx.Data.Save(killer, false)
+			ctx.Economy.PushState(killer)
+		end
 		ctx.Analytics.Log(killer, "CaptainKilled", 1, { weapon = weaponId(killer), run = runIndex(killer) })
 		Notify:FireClient(killer, {
 			Text = "CAPTAIN BRONN DEFEATED",
