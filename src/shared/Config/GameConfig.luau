@@ -84,7 +84,9 @@ local GameConfig = {
 		HomeTolerance = 2, -- studs from his spawn point that count as "home"
 		NameplateMaxDistance = 220, -- readable from the cellblock door, ~70 studs away
 		TelegraphTransparency = 0.45,
-		StrikeFlashTime = 0.15,
+		-- How long a blow holds at impact before recovery: the "impact pause". The floor
+		-- marker flashes solid for the same time. (Was StrikeFlashTime: same value.)
+		ImpactPause = 0.15,
 	},
 
 	-- ── HUD / UI (client) ───────────────────────────────────────
@@ -118,6 +120,35 @@ local GameConfig = {
 		PopTime = 0.18, -- small "something changed" scale bounce
 		PopScale = 1.12,
 		PressScale = 0.9, -- touch button squash on press
+	},
+
+	-- ── Feel (client): procedural animation, all TweenService ───
+	Feel = {
+		-- Player weapon swing, in phases. Total stays under the fastest weapon cooldown (0.6s).
+		SwingWindUp = 0.1,
+		SwingStrike = 0.07,
+		SwingFollowThrough = 0.1,
+		SwingRecover = 0.2,
+		-- Hit-stop: everything local freezes for a beat when a blow lands.
+		HitStopTime = 0.06, -- your hit lands
+		HeavyHitStopTime = 0.14, -- a kill, or taking a heavy blow
+		HeavyHitDamage = 25, -- damage taken at or above this counts as heavy
+		-- Camera kick strength, in degrees of shake (§40: a reduced-shake option comes later).
+		KickHit = 0.7,
+		KickKill = 1.4,
+		KickTaken = 1.4,
+		KickHeavyTaken = 3,
+		-- Torches.
+		TorchFlickerAmount = 0.3, -- +/- fraction of base brightness
+		TorchFlickerSpeed = 7,
+		TorchUpdateRate = 30, -- updates per second (not every frame: §46)
+		-- Chest lid.
+		ChestLidOpenAngle = 110, -- degrees
+		ChestLidOpenTime = 0.45,
+		-- Loot on the floor: bob and spin so it's visible.
+		LootBobHeight = 0.45,
+		LootBobPeriod = 1.6,
+		LootSpinSpeed = 90, -- degrees per second
 	},
 
 	-- ── Analytics ───────────────────────────────────────────────

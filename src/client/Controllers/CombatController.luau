@@ -17,6 +17,7 @@ local Net = require(Shared:WaitForChild("Net"))
 local WeaponConfig = require(Shared:WaitForChild("Config"):WaitForChild("WeaponConfig"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local HitStop = require(script.Parent:WaitForChild("HitStop"))
 
 local player = Players.LocalPlayer
 local CombatController = {}
@@ -25,21 +26,81 @@ local AttackRequest: RemoteEvent
 local localCooldownUntil = 0
 local currentCooldown = 0.65
 
+-- ── Procedural swing (VISUAL_OVERHAUL_PLAN Phase 2, item 7) ──
+-- Four phases tweened on the shoulder joint: wind-up, strike, follow-through, recover. No
+-- imported animation. R15 swings the whole arm through RightShoulder.C0, which composes with
+-- whatever the Animator is playing. Other rigs (R6) get a wrist snap on the weapon's Grip
+-- weld instead. Local and cosmetic: other players don't see it, and the server never reads it.
+--
+-- Rotations relative to the rest pose. Positive X raises the arm forward and up.
+local ARM = {
+	WindUp = CFrame.Angles(math.rad(150), 0, math.rad(-25)), -- up and back over the shoulder
+	Strike = CFrame.Angles(math.rad(25), 0, math.rad(20)), -- down and across in front
+	FollowThrough = CFrame.Angles(math.rad(-25), 0, math.rad(30)), -- carried on past
+}
+local WRIST = {
+	WindUp = CFrame.Angles(math.rad(70), 0, 0),
+	Strike = CFrame.Angles(math.rad(-80), 0, 0),
+	FollowThrough = CFrame.Angles(math.rad(-110), 0, 0),
+}
+local restC0: { [Instance]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
+local swingToken = 0
+
+-- Plays a list of C0 targets one after another. A newer swing (new token) or a cancelled
+-- tween stops the chain; hit-stop pauses it (HitStop.Track) and it resumes in place.
+local function chain(joint: Instance, steps: { { any } }, token: number)
+	local i = 0
+	local function nextStep()
+		i += 1
+		if token ~= swingToken or i > #steps or not joint.Parent then
+			return
+		end
+		local step = steps[i]
+		local t = TweenService:Create(joint, TweenInfo.new(step[2], step[3], step[4]), { C0 = step[1] })
+		HitStop.Track(t)
+		t.Completed:Connect(function(state)
+			if state == Enum.PlaybackState.Completed then
+				nextStep()
+			end
+		end)
+		t:Play()
+	end
+	nextStep()
+end
+
+local function swingJoint(joint: Instance, poses, token: number)
+	local rest = restC0[joint] or (joint :: any).C0
+	restC0[joint] = rest
+	local feel = GameConfig.Feel
+	local Quad = Enum.EasingStyle.Quad
+	chain(joint, {
+		{ rest * poses.WindUp, feel.SwingWindUp, Quad, Enum.EasingDirection.Out },
+		{ rest * poses.Strike, feel.SwingStrike, Quad, Enum.EasingDirection.In },
+		{ rest * poses.FollowThrough, feel.SwingFollowThrough, Quad, Enum.EasingDirection.Out },
+		{ rest, feel.SwingRecover, Quad, Enum.EasingDirection.InOut },
+	}, token)
+end
+
 local function playSwing()
 	local character = player.Character
 	if not character then
 		return
 	end
-	local weapon = character:FindFirstChild("EquippedWeapon")
-	if not weapon or not weapon:IsA("BasePart") then
+	swingToken += 1
+	local token = swingToken
+
+	local upperArm = character:FindFirstChild("RightUpperArm")
+	local shoulder = upperArm and upperArm:FindFirstChild("RightShoulder")
+	if shoulder and shoulder:IsA("Motor6D") then
+		swingJoint(shoulder, ARM, token)
 		return
 	end
 
-	-- Cheap but readable graybox swing: rotate the weld offset.
-	local original = weapon.CFrame
-	TweenService
-		:Create(weapon, TweenInfo.new(0.08), { CFrame = original * CFrame.Angles(math.rad(-70), 0, 0) })
-		:Play()
+	local weapon = character:FindFirstChild("EquippedWeapon")
+	local grip = weapon and weapon:FindFirstChild("Grip")
+	if grip and grip:IsA("Weld") then
+		swingJoint(grip, WRIST, token)
+	end
 end
 
 local function onAttack(_actionName: string, inputState: Enum.UserInputState)
