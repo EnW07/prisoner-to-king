@@ -48,6 +48,7 @@ type Fight = {
 	Sword: BasePart?,
 	Highlight: Highlight?,
 	Busy: boolean,
+	Interrupt: number, -- bumped by a stagger; a running attack bails when it changes
 	InFight: boolean,
 	RotationIndex: number,
 	NextAttackAt: number,
@@ -303,7 +304,8 @@ local function charge(f: Fight, attack, destination: Vector3, damage: number)
 	local deadline = os.clock() + flatDistance(root.Position, destination) / TUNE.ChargeSpeed
 
 	-- Checked every frame, not on the AI tick: at charge speed he covers ~10 studs a tick.
-	while os.clock() < deadline and alive(f) do
+	local myInterrupt = f.Interrupt
+	while os.clock() < deadline and alive(f) and f.Interrupt == myInterrupt do
 		for _, player in Players:GetPlayers() do
 			local pRoot = livingRoot(player)
 			if pRoot and not struck[player] and flatDistance(pRoot.Position, root.Position) <= reach then
@@ -325,6 +327,11 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	local hum: Humanoid = record.Humanoid
 	local root = record.Model.PrimaryPart :: BasePart
 	f.Busy = true
+	record.Attacking = true -- a hit mid-attack doesn't flinch him out of it (EnemyService)
+	local myInterrupt = f.Interrupt
+	local function cut(): boolean
+		return not alive(f) or f.Interrupt ~= myInterrupt
+	end
 
 	-- Plant and lock facing. The strike resolves against THIS origin, so stepping out of the
 	-- painted area during the wind-up is always a clean dodge.
@@ -359,7 +366,11 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 
 	task.wait(attack.WindUp)
 
-	if alive(f) then
+	if cut() then
+		removeMarker(f, marker)
+		return
+	end
+	do
 		local damage = math.floor(cfg.Damage * attack.DamageMultiplier + 0.5)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
@@ -373,18 +384,19 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	end
 	removeMarker(f, marker)
 
-	if not alive(f) then
+	if cut() then
 		return
 	end
 	-- Recovery: he stands still while the move's Recover phase plays out. This is the
 	-- player's punish window.
 	task.wait(attack.Recovery)
-	if not alive(f) then
+	if cut() then
 		return
 	end
 	hum.WalkSpeed = cfg.MoveSpeed
 	f.NextAttackAt = os.clock() + cfg.AttackCooldown
 	f.Busy = false
+	record.Attacking = false
 end
 
 -- ── Brain ───────────────────────────────────────────────────────
@@ -567,6 +579,28 @@ local function onKilled(record, killer: Player?)
 	end
 end
 
+-- His poise broke (E7): whatever he was doing stops, telegraph and all, and he is open
+-- for his StaggerDuration. Rare, by his poise, but it must be possible or heavy attacks
+-- have no purpose against him.
+local function onStaggered(record)
+	local f = fight
+	if not f or f.Record ~= record then
+		return
+	end
+	f.Interrupt += 1
+	for _, marker in f.Markers do
+		marker:Destroy()
+	end
+	table.clear(f.Markers)
+	setTelegraph(f, nil)
+	local hum: Humanoid = record.Humanoid
+	hum.WalkSpeed = record.Config.MoveSpeed
+	f.Busy = false
+	record.Attacking = false
+	f.NextAttackAt = os.clock() + (record.Config.StaggerDuration or 1) + record.Config.AttackCooldown
+	notifyEngaged(f, { Text = "BRONN STAGGERS!", Sub = "HIT HIM", Kind = "milestone" })
+end
+
 local function onKilledPlayer(_record, player: Player, attackName: string)
 	ctx.Analytics.Log(player, "CaptainDefeatedPlayer", 1, {
 		attack = attackName,
@@ -618,6 +652,7 @@ function CaptainService.Spawn()
 		OnDamaged = onDamaged,
 		OnKilled = onKilled,
 		OnKilledPlayer = onKilledPlayer,
+		OnStaggered = onStaggered,
 	})
 	if not record then
 		warn("[Captain] EnemyService could not spawn Bronn; the watchdog will retry")
@@ -644,6 +679,7 @@ function CaptainService.Spawn()
 		Sword = sword,
 		Highlight = highlight,
 		Busy = false,
+		Interrupt = 0,
 		InFight = false,
 		RotationIndex = 1,
 		NextAttackAt = 0,

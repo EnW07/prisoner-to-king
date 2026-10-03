@@ -64,8 +64,15 @@ AnimationConfig.Sets = {
 		Attack = nil,
 		Alert = nil,
 		Stagger = nil,
+		Flinch = nil,
 		Block = nil,
-		Procedural = { Attack = "GuardChop", Alert = "Alert", Stagger = "Stagger", Block = "ShieldBlock" },
+		Procedural = {
+			Attack = "GuardChop",
+			Alert = "Alert",
+			Stagger = "Stagger",
+			Flinch = "Flinch",
+			Block = "ShieldBlock",
+		},
 	},
 	Spearman = {
 		Idle = DEFAULT,
@@ -76,8 +83,15 @@ AnimationConfig.Sets = {
 		Attack = nil,
 		Alert = nil,
 		Stagger = nil,
+		Flinch = nil,
 		Block = nil,
-		Procedural = { Attack = "SpearThrust", Alert = "Alert", Stagger = "Stagger", Block = "ShieldBlock" },
+		Procedural = {
+			Attack = "SpearThrust",
+			Alert = "Alert",
+			Stagger = "Stagger",
+			Flinch = "Flinch",
+			Block = "ShieldBlock",
+		},
 	},
 	Captain = {
 		Idle = DEFAULT,
@@ -92,12 +106,14 @@ AnimationConfig.Sets = {
 		Charge = nil,
 		Roar = nil,
 		Stagger = nil,
+		Flinch = nil,
 		Procedural = {
 			Cleave = "BronnCleave",
 			CrushingBlow = "BronnCrush",
 			Charge = "BronnCharge",
 			Roar = "BronnRoar",
 			Stagger = "Stagger",
+			Flinch = "Flinch",
 		},
 		-- A resting posture baked into the rig at spawn; every move is relative to it.
 		Posture = "BronnStance",
@@ -860,6 +876,11 @@ AnimationConfig.Moves = {
 	Alert = {
 		Strike = { { Pose = "AlertSnap", Time = 0.12, Style = "Back", Dir = "Out", Hold = 0.25 } },
 		Recover = { { Pose = "AlertReady", Time = 0.3, Style = "Sine", Dir = "Out" } },
+	},
+	-- A light hit on an enemy that isn't mid-attack: a short rock back, then upright (E8).
+	Flinch = {
+		Strike = { { Pose = "HitFlinch", Time = 0.06, Style = "Back", Dir = "Out", Hold = 0.04 } },
+		Recover = { { Pose = "Rest", Time = 0.22, Style = "Sine", Dir = "Out" } },
 	},
 	-- Filled with the enemy's StaggerDuration (E7).
 	Stagger = {

@@ -14,7 +14,7 @@
 
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
-local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,8 +22,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
 local WeaponConfig = require(Shared:WaitForChild("Config"):WaitForChild("WeaponConfig"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
-local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 local PlayerAnimController = require(script.Parent:WaitForChild("PlayerAnimController"))
+local ControlButton = require(script.Parent:WaitForChild("ControlButton"))
 
 local player = Players.LocalPlayer
 local CombatController = {}
@@ -33,6 +33,7 @@ local localCooldownUntil = 0
 local currentCooldown = 0.65
 local comboStage = 0
 local lastSwingAt = 0
+local swingButton: ControlButton.Button? = nil
 
 local function onAttack(_actionName: string, inputState: Enum.UserInputState)
 	if inputState ~= Enum.UserInputState.Begin then
@@ -64,57 +65,28 @@ local function onAttack(_actionName: string, inputState: Enum.UserInputState)
 	AttackRequest:FireServer()
 end
 
--- Bottom right, above Roblox's own jump button. Rounded-square per the style line.
+-- Bottom right, above Roblox's own jump button, with its cooldown as a radial fill.
 -- Labelled SWING: art §7 lists "Attack" under "never", and RAID means raiding a castle.
 local function buildSwingButton()
 	local ui = GameConfig.UI
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "PTK_Controls"
-	gui.ResetOnSpawn = false
-	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
-	gui.Parent = player:WaitForChild("PlayerGui")
-
-	local panel, content = UIStyle.Panel(
-		"Frame",
+	local b = ControlButton.Create(
 		"Swing",
-		gui,
-		UDim2.fromScale(ui.SwingButtonSize, ui.SwingButtonSize),
+		"SWING",
+		ui.SwingButtonSize,
 		UDim2.fromScale(0.97, 0.72),
 		Vector2.new(1, 1)
 	)
-	UIStyle.Aspect(panel, 1)
-	local floor = Instance.new("UISizeConstraint")
-	floor.MinSize = Vector2.new(UIStyle.MIN_TOUCH_PX, UIStyle.MIN_TOUCH_PX)
-	floor.Parent = panel
-	UIStyle.Text("Label", content, "SWING", UDim2.fromScale(1, 1), nil, 30)
-
-	local scale = Instance.new("UIScale")
-	scale.Parent = panel
-
-	local hit = Instance.new("TextButton")
-	hit.Name = "Hit"
-	hit.Size = UDim2.fromScale(1, 1)
-	hit.BackgroundTransparency = 1
-	hit.Text = ""
-	hit.ZIndex = 4
-	hit.Parent = panel
-
-	local press = TweenInfo.new(ui.PopTime / 2)
-	hit.InputBegan:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.Touch
-			or input.UserInputType == Enum.UserInputType.MouseButton1
-		then
-			TweenService:Create(scale, press, { Scale = ui.PressScale }):Play()
-			onAttack("PTK_Attack", Enum.UserInputState.Begin)
-		end
+	b.Pressed:Connect(function()
+		onAttack("PTK_Attack", Enum.UserInputState.Begin)
 	end)
-	hit.InputEnded:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.Touch
-			or input.UserInputType == Enum.UserInputType.MouseButton1
-		then
-			TweenService:Create(scale, TweenInfo.new(ui.PopTime, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	swingButton = b
+
+	local shown = -1
+	RunService.RenderStepped:Connect(function()
+		local remaining = math.max(0, localCooldownUntil - os.clock())
+		if math.abs(remaining - shown) > 0.01 or (remaining == 0 and shown ~= 0) then
+			shown = remaining
+			b.SetCooldown(remaining, currentCooldown * 0.9)
 		end
 	end)
 end

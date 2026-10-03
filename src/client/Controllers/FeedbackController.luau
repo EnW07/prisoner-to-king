@@ -2,14 +2,23 @@
 -- FeedbackController.lua
 -- Blueprint §11 ("combat cannot feel like two Roblox mannequins touching each other")
 -- and §92, the no-sound test: every important state must be readable with audio off.
+-- (MASTER_BUILD_SPEC E8: the hit feedback stack, all of it scaled to significance.)
+--
+-- On every hit the player lands: hit-stop scaled to damage, a camera kick scaled to
+-- damage (honouring the reduced-shake setting), a damage number sized by significance,
+-- sparks at the CONTACT POINT the server reports (not the enemy's centre), and on a
+-- killing blow a flash on the enemy and the biggest of everything. Taking a hit: a number
+-- in `bleed`, a kick, hit-stop on heavy blows. Dodging through an attack: DODGED.
 --
 -- MANUAL SETUP: fill in SOUND_IDS with your own audio asset IDs. Empty strings are skipped,
--- so the game runs silently but correctly until you do. No placeholder IDs are invented here.
+-- so the game runs silently but correctly until you do. No placeholder IDs are invented
+-- here, and every sound the game can make is in this one table (K4).
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -17,21 +26,55 @@ local Net = require(Shared:WaitForChild("Net"))
 local Palette = require(Shared:WaitForChild("Config"):WaitForChild("Palette"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 local HitStop = require(script.Parent:WaitForChild("HitStop"))
+local ClientSettings = require(script.Parent:WaitForChild("ClientSettings"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 
+local FEEL = GameConfig.Feel
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 local FeedbackController = {}
 
+-- Every sound hook in the game. Fill these in; leave what you don't have as "".
 local SOUND_IDS = {
-	hit = "", -- e.g. "rbxassetid://0000000000"
+	-- combat
+	hitLight = "", -- e.g. "rbxassetid://0000000000"
+	hitHeavy = "",
 	takeDamage = "",
 	kill = "",
-	loot = "",
-	rarity = "",
-	escape = "",
+	enemyWindup = "",
+	enemyAlert = "",
+	block = "",
+	blocked = "", -- your hit clangs off a shield
+	dodge = "",
+	dash = "",
+	stagger = "",
+	-- loot
+	lootPickup = "",
+	rarityCommon = "",
+	rarityUncommon = "",
+	rarityRare = "",
+	rarityEpic = "",
+	rarityLegendary = "",
+	rarityMythic = "", -- §37: must be instantly recognisable
+	chestOpen = "",
+	-- world
+	door = "",
 	alarm = "",
+	footstepStone = "",
+	footstepWood = "",
+	footstepWater = "",
+	torchCrackle = "",
+	ambientDrone = "",
+	-- moments
+	extraction = "",
+	death = "",
+	bossRoar = "",
+	phaseTransition = "",
+	rankUp = "",
+	-- ui
+	uiClick = "",
+	purchase = "",
 }
 
 local function playSound(name: string, volume: number?)
@@ -41,61 +84,146 @@ local function playSound(name: string, volume: number?)
 	end
 	local s = Instance.new("Sound")
 	s.SoundId = id
-	s.Volume = volume or 0.6
+	s.Volume = (volume or 0.6) * (ClientSettings.Get("SfxVolume") or 1)
 	s.Parent = SoundService
 	s:Play()
 	Debris:AddItem(s, 5)
 end
 
--- Floating damage number at a world position.
-local function damageNumber(position: Vector3, amount: number, color: Color3)
+-- Other controllers play hooks through this, so the ID table stays in one place.
+function FeedbackController.PlaySound(name: string, volume: number?)
+	playSound(name, volume)
+end
+
+-- 0 at nothing, 1 at HeavyHitDamage and above.
+local function significance(damage: number): number
+	return math.clamp(damage / FEEL.HeavyHitDamage, 0, 1)
+end
+
+-- Floating text at a world position. `scale` sizes it by significance.
+local function floatingText(position: Vector3, text: string, color: Color3, scale: number)
 	local anchor = Instance.new("Part")
 	anchor.Anchored = true
 	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
 	anchor.Transparency = 1
 	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
 	anchor.CFrame = CFrame.new(position + Vector3.new(math.random(-15, 15) / 10, 2.5, 0))
 	anchor.Parent = workspace
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.fromOffset(120, 44)
+	billboard.Size = UDim2.fromOffset(140 * scale, 50 * scale)
 	billboard.AlwaysOnTop = true
 	billboard.Parent = anchor
 
-	local text = Instance.new("TextLabel")
-	text.Size = UDim2.fromScale(1, 1)
-	text.BackgroundTransparency = 1
-	text.Text = tostring(math.floor(amount))
-	text.TextColor3 = color
-	text.TextStrokeColor3 = Palette.pitch
-	text.TextStrokeTransparency = 0
-	text.Font = UIStyle.FONT
-	text.TextScaled = true
-	text.Parent = billboard
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = color
+	label.TextStrokeColor3 = Palette.pitch
+	label.TextStrokeTransparency = 0
+	label.Font = UIStyle.FONT
+	label.TextScaled = true
+	label.Parent = billboard
 
 	-- Numbers punch (art §5): land big, settle.
-	local scale = Instance.new("UIScale")
-	scale.Scale = 1.6
-	scale.Parent = text
-	TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	local uiScale = Instance.new("UIScale")
+	uiScale.Scale = 1.6
+	uiScale.Parent = label
+	TweenService:Create(uiScale, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
 	TweenService:Create(anchor, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		CFrame = anchor.CFrame * CFrame.new(0, 4, 0),
 	}):Play()
-	TweenService:Create(text, TweenInfo.new(0.7), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	TweenService:Create(label, TweenInfo.new(0.7), { TextTransparency = 1, TextStrokeTransparency = 1 })
+		:Play()
 
 	Debris:AddItem(anchor, 0.8)
 end
 
--- Very short camera nudge. Kept small: §40 asks for a reduced-shake option later.
+local function damageNumber(position: Vector3, amount: number, color: Color3, scale: number)
+	floatingText(position, tostring(math.floor(amount)), color, scale)
+end
+
+-- ── Sparks at the contact point (pooled: no create/destroy per hit, §41) ──
+local SPARK_POOL = 8
+local sparkPool: { { Part: BasePart, Emitter: ParticleEmitter } } = {}
+local sparkIndex = 0
+
+local function makeSpark()
+	local part = Instance.new("Part")
+	part.Name = "PTK_Spark"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Transparency = 1
+	part.Size = Vector3.new(0.2, 0.2, 0.2)
+	part.Parent = workspace
+	local emitter = Instance.new("ParticleEmitter")
+	-- Default particle texture (a built-in asset), rate 0: emitted in bursts only.
+	emitter.Rate = 0
+	emitter.Lifetime = NumberRange.new(0.18, 0.4)
+	emitter.Speed = NumberRange.new(12, 26)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	emitter.Transparency = NumberSequence.new(0, 1)
+	emitter.LightEmission = 1
+	emitter.Acceleration = Vector3.new(0, -40, 0)
+	emitter.Drag = 4
+	emitter.Parent = part
+	return { Part = part, Emitter = emitter }
+end
+
+local function sparks(position: Vector3, count: number, color: Color3)
+	if #sparkPool < SPARK_POOL then
+		table.insert(sparkPool, makeSpark())
+	end
+	sparkIndex = sparkIndex % #sparkPool + 1
+	local spark = sparkPool[sparkIndex]
+	spark.Part.CFrame = CFrame.new(position)
+	spark.Emitter.Color = ColorSequence.new(color)
+	spark.Emitter:Emit(count)
+end
+
+-- The killing blow: the enemy flashes white and fades. Unmistakable with the sound off.
+local function killFlash(target: Instance?)
+	if not target or not target:IsA("Model") then
+		return
+	end
+	local highlight = Instance.new("Highlight")
+	highlight.Adornee = target
+	highlight.FillColor = Color3.new(1, 1, 1)
+	highlight.OutlineColor = Palette.bleed
+	highlight.FillTransparency = 0.1
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = target
+	TweenService:Create(highlight, TweenInfo.new(FEEL.KillFlashTime, Enum.EasingStyle.Quad), {
+		FillTransparency = 1,
+		OutlineTransparency = 1,
+	}):Play()
+	Debris:AddItem(highlight, FEEL.KillFlashTime + 0.05)
+end
+
+-- Very short camera nudge, scaled by the reduced-shake setting (§40).
 local function cameraKick(strength: number)
 	if camera.CameraType == Enum.CameraType.Scriptable then
 		return -- the death camera is drifting; a kick would fight its tween
 	end
+	strength *= ClientSettings.ShakeFactor()
+	if strength <= 0 then
+		return
+	end
 	local start = os.clock()
 	local duration = 0.12
 	local conn
-	conn = game:GetService("RunService").RenderStepped:Connect(function()
+	conn = RunService.RenderStepped:Connect(function()
 		local alpha = (os.clock() - start) / duration
 		if alpha >= 1 then
 			conn:Disconnect()
@@ -111,35 +239,85 @@ local function cameraKick(strength: number)
 	end)
 end
 
+-- Public, so boss attacks and other moments can shake through the same setting.
+function FeedbackController.Kick(strength: number)
+	cameraKick(strength)
+end
+
+local function onDealt(data)
+	-- Sparks and the kill flash show for everyone's hits; numbers, hit-stop and kicks
+	-- only for this player's own, to keep the screen readable.
+	local s = significance(data.Damage)
+	local heavy = s >= 1
+	local mine = data.Attacker == player.UserId
+	sparks(
+		data.Position,
+		if data.Killed
+			then FEEL.SparkCountKill
+			elseif heavy or data.Finisher then FEEL.SparkCountHeavy
+			else FEEL.SparkCount,
+		if data.Killed then Palette.bleed else Palette.ember
+	)
+	if data.Killed then
+		killFlash(data.Target)
+	end
+	if not mine then
+		return
+	end
+
+	local scale = FEEL.HitScaleMin + (FEEL.HitScaleMax - FEEL.HitScaleMin) * s
+	if data.Finisher then
+		scale *= FEEL.FinisherHitStopBonus
+	end
+	local numberScale = 1 + (FEEL.NumberScaleMax - 1) * s + (if data.Killed then FEEL.KillNumberBonus else 0)
+	damageNumber(data.Position, data.Damage, UIStyle.TEXT, numberScale)
+	if data.Killed then
+		HitStop.Freeze(FEEL.HeavyHitStopTime * math.max(scale, 1))
+		cameraKick(FEEL.KickKill)
+		playSound("kill")
+	else
+		HitStop.Freeze(FEEL.HitStopTime * scale)
+		cameraKick(FEEL.KickHit * scale)
+		playSound(if heavy or data.Finisher then "hitHeavy" else "hitLight")
+	end
+	if data.Staggered then
+		playSound("stagger", 0.7)
+	end
+end
+
+local function onTaken(data)
+	damageNumber(
+		data.Position,
+		data.Damage,
+		Palette.bleed,
+		1 + (FEEL.NumberScaleMax - 1) * significance(data.Damage)
+	)
+	local heavy = data.Damage >= FEEL.HeavyHitDamage
+	if heavy then
+		HitStop.Freeze(FEEL.HeavyHitStopTime) -- e.g. Bronn's CRUSHING BLOW
+	end
+	cameraKick(if heavy then FEEL.KickHeavyTaken else FEEL.KickTaken)
+	playSound("takeDamage")
+end
+
 function FeedbackController.Init()
 	Net.Event("HitConfirm").OnClientEvent:Connect(function(data)
 		if data.Kind == "dealt" then
-			-- Only show numbers for hits this player caused, to keep the screen readable.
-			if data.Attacker == player.UserId then
-				damageNumber(data.Position, data.Damage, UIStyle.TEXT)
-				-- Hit-stop: a beat on every landed hit, a longer one on the kill.
-				HitStop.Freeze(
-					if data.Killed then GameConfig.Feel.HeavyHitStopTime else GameConfig.Feel.HitStopTime
-				)
-				cameraKick(if data.Killed then GameConfig.Feel.KickKill else GameConfig.Feel.KickHit)
-				playSound(if data.Killed then "kill" else "hit")
-			end
+			onDealt(data)
 		elseif data.Kind == "taken" then
-			damageNumber(data.Position, data.Damage, Palette.bleed) -- taken = danger
-			local heavy = data.Damage >= GameConfig.Feel.HeavyHitDamage
-			if heavy then
-				HitStop.Freeze(GameConfig.Feel.HeavyHitStopTime) -- e.g. Bronn's CRUSHING BLOW
-			end
-			cameraKick(if heavy then GameConfig.Feel.KickHeavyTaken else GameConfig.Feel.KickTaken)
-			playSound("takeDamage")
+			onTaken(data)
+		elseif data.Kind == "dodged" then
+			-- Through the attack with the i-frames: the reward for reading the windup.
+			floatingText(data.Position, "DODGED", Palette.escape, 1.2)
+			playSound("dodge", 0.7)
 		end
 	end)
 
 	Net.Event("Notify").OnClientEvent:Connect(function(data)
 		if data.Kind == "gold" or data.Kind == "loot" then
-			playSound("loot")
+			playSound("lootPickup")
 		elseif data.Kind == "weapon" then
-			playSound("rarity", 0.8)
+			playSound("rarity" .. tostring(data.Rarity or "Common"), 0.8)
 		elseif data.Kind == "alarm" then
 			playSound("alarm", 0.8)
 		end
@@ -147,7 +325,9 @@ function FeedbackController.Init()
 
 	Net.Event("ScreenEvent").OnClientEvent:Connect(function(data)
 		if data.Kind == "escaped" then
-			playSound("escape", 0.9)
+			playSound("extraction", 0.9)
+		elseif data.Kind == "captured" then
+			playSound("death", 0.9)
 		end
 	end)
 end
