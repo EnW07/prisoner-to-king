@@ -1,7 +1,24 @@
 --!strict
 -- EnemyService.lua
 -- Blueprint §46: AI runs on a throttled tick, NOT every frame, and only for relevant NPCs.
--- Bodies are real R15 rigs built by RigFactory.
+-- Bodies are real R15 rigs built by RigFactory. (MASTER_BUILD_SPEC Section F.)
+--
+-- ONE BRAIN, MANY IDENTITIES. Every non-boss enemy runs Think. What makes an archer an
+-- archer is EnemyConfig, read here as data (§12 rule: one readable identity each):
+--   • melee (default)       chase to a stand-off ring, committed windup, one box strike
+--   • PreferredRange        ranged: hold distance, retreat when closed on, fire a projectile
+--   • Static                never moves; fires on its cooldown (FixedAim: along its spawn
+--                           facing, whoever is there)
+--   • Leap                  the strike is a leap at the target; damage at landing
+--   • Telegraph             the strike is an area slam painted on the floor
+--   • Shield                frontal hits are blocked unless they break guard
+--   • Strafe                weaves while chasing
+-- Adding an enemy is config plus, at most, a silhouette in RigFactory. Combat logic never
+-- special-cases an enemy id.
+--
+-- AWARENESS (F8): a guard that sees you STOPS, snaps its head up, shows "!", then engages
+-- after AlertTime. Sight needs line of sight to the world geometry (a locked door hides
+-- you). Being hit skips most of that: a short alert, then the fight.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,35 +26,45 @@ local TweenService = game:GetService("TweenService")
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
+local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
 local EnemyAnimator = require(script.Parent.EnemyAnimator)
 local CollisionGroups = require(script.Parent.CollisionGroups)
+local ProjectileService = require(script.Parent.ProjectileService)
 local Ragdoll = require(game.ReplicatedStorage.Shared.Anim.Ragdoll)
 
 local EnemyService = {}
 local ctx
 local HitConfirm: RemoteEvent
+local Notify: RemoteEvent
 
+local ENEMY = GameConfig.Enemy
 local container: Folder
+local telegraphs: Folder
 local active: { [Model]: any } = {}
 local accumulator = 0
 
 function EnemyService.Init(context)
 	ctx = context
 	HitConfirm = Net.Event("HitConfirm")
+	Notify = Net.Event("Notify")
 
 	container = Instance.new("Folder")
 	container.Name = "Enemies"
 	container.Parent = workspace
+	telegraphs = Instance.new("Folder")
+	telegraphs.Name = "EnemyTelegraphs"
+	telegraphs.Parent = workspace
 
 	CollisionGroups.Init()
 	RigFactory.Prewarm(EnemyConfig)
 	EnemyAnimator.Init()
+	ProjectileService.Init(ctx, { container, telegraphs })
 
 	RunService.Heartbeat:Connect(function(dt)
 		accumulator += dt
-		if accumulator < GameConfig.Enemy.ThinkInterval then
+		if accumulator < ENEMY.ThinkInterval then
 			return
 		end
 		local step = accumulator
@@ -76,10 +103,11 @@ end
 -- stat still comes from EnemyConfig, unchanged.
 local function buildRig(enemyId: string, cfg, cframe: CFrame): (Model, Humanoid)
 	local model = RigFactory.Build(enemyId, cfg)
+	RigFactory.Vary(model, cfg) -- F7: no two guards quite alike
 	local humanoid = model:FindFirstChildOfClass("Humanoid") :: Humanoid
 	humanoid.MaxHealth = cfg.MaxHealth
 	humanoid.Health = cfg.MaxHealth
-	humanoid.WalkSpeed = cfg.MoveSpeed
+	humanoid.WalkSpeed = if cfg.Static then 0 else cfg.MoveSpeed
 	humanoid.BreakJointsOnDeath = false
 	humanoid.DisplayName = cfg.DisplayName
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
@@ -88,12 +116,42 @@ local function buildRig(enemyId: string, cfg, cframe: CFrame): (Model, Humanoid)
 	return model, humanoid
 end
 
+-- The "!" over the head during an alert (F8). Server-made so every client sees the same
+-- moment; it is one TextLabel, toggled, never rebuilt.
+local function buildAlertMark(model: Model): BillboardGui?
+	local head = model:FindFirstChild("Head")
+	if not head or not head:IsA("BasePart") then
+		return nil
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "AlertMark"
+	gui.Adornee = head
+	gui.Size = UDim2.fromOffset(ENEMY.AlertMarkPx, ENEMY.AlertMarkPx)
+	gui.StudsOffset = Vector3.new(0, head.Size.Y + 1.6, 0)
+	gui.AlwaysOnTop = false
+	gui.LightInfluence = 0
+	gui.Enabled = false
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = "!"
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Palette.bleed
+	label.TextStrokeColor3 = Palette.pitch
+	label.TextStrokeTransparency = 0
+	label.Parent = gui
+	gui.Parent = model
+	return gui
+end
+
 -- ── Spawning ────────────────────────────────────────────────────
 export type SpawnOptions = {
 	PatrolA: Vector3?,
 	PatrolB: Vector3?,
 	Respawn: boolean?,
 	SpawnCFrame: CFrame?,
+	IdlePose: string?, -- an AnimationConfig pose held while idle (leaning, warming hands)
 	-- Boss hooks. Brain replaces Think; the others are notifications after the fact.
 	Brain: ((record: any, dt: number) -> ())?,
 	OnDamaged: ((record: any, attacker: Player) -> ())?,
@@ -132,8 +190,12 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		EnemyId = enemyId,
 		State = "Patrol",
 		Target = nil :: Player?,
+		LostTargetAt = -math.huge,
+		-- Awareness (F8).
+		AlertUntil = 0,
+		AlertMark = nil :: BillboardGui?,
 		-- Attack cycle (BeginAttack). Attacking pauses Think; AttackToken cancels a cycle
-		-- whose enemy died or was removed mid-swing.
+		-- whose enemy died, staggered or was removed mid-swing.
 		Attacking = false,
 		AttackToken = 0,
 		NextAttackAt = 0,
@@ -144,7 +206,10 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		PatrolA = opts.PatrolA,
 		PatrolB = opts.PatrolB,
 		PatrolTarget = opts.PatrolA,
+		IdlePose = opts.IdlePose,
+		IdlePosed = false,
 		SpawnCFrame = opts.SpawnCFrame or cframe,
+		Seed = math.random() * 100, -- per-enemy phase for strafing
 		Respawn = opts.Respawn == true,
 		Options = opts,
 	}
@@ -158,6 +223,7 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 			root:SetNetworkOwner(nil)
 		end
 		EnemyAnimator.Attach(record)
+		record.AlertMark = buildAlertMark(model)
 	end)
 	if not setupOk then
 		warn(("[Enemy] Could not set up %s; removing it: %s"):format(enemyId, tostring(setupErr)))
@@ -170,7 +236,22 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 	return record
 end
 
--- ── AI tick ─────────────────────────────────────────────────────
+-- A pack: `count` of the same enemy around a point (hounds, F4). Returns the records.
+function EnemyService.SpawnPack(enemyId: string, cframe: CFrame, count: number, options: SpawnOptions?)
+	local records = {}
+	local spread = ENEMY.PackSpread
+	for i = 1, count do
+		local angle = (i - 1) / count * 2 * math.pi
+		local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * spread
+		local record = EnemyService.Spawn(enemyId, cframe + offset, options)
+		if record then
+			table.insert(records, record)
+		end
+	end
+	return records
+end
+
+-- ── Helpers ─────────────────────────────────────────────────────
 -- Flattened (XZ) vector from a to b.
 local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
@@ -195,9 +276,76 @@ local function face(root: BasePart, point: Vector3)
 	end
 end
 
+-- Can the enemy see this point? Only world geometry blocks sight, so a closed door hides
+-- you and another guard does not.
+local sightParams = RaycastParams.new()
+sightParams.FilterType = Enum.RaycastFilterType.Include
+local function canSee(record, point: Vector3): boolean
+	local world = ctx.World and ctx.World.Folder
+	if not world then
+		return true
+	end
+	local head = record.Model:FindFirstChild("Head") or record.Model.PrimaryPart
+	if not head or not head:IsA("BasePart") then
+		return true
+	end
+	sightParams.FilterDescendantsInstances = { world }
+	local from = head.Position
+	local to = point + Vector3.new(0, 1, 0)
+	local hit = workspace:Raycast(from, to - from, sightParams)
+	return hit == nil
+end
+
+local function setAlertMark(record, on: boolean)
+	local mark = record.AlertMark
+	if mark and mark.Parent then
+		mark.Enabled = on
+	end
+end
+
+-- The alert moment (F8): plant, face, head snap and "!", then engage after `time`.
+local function startAlert(record, targetRoot: BasePart, time: number)
+	local root = record.Model.PrimaryPart :: BasePart
+	local now = os.clock()
+	record.State = "Alert"
+	record.AlertUntil = now + time
+	if not record.Config.Static then
+		record.Humanoid:MoveTo(root.Position)
+	end
+	if not record.Config.FixedAim then
+		face(root, targetRoot.Position)
+	end
+	EnemyAnimator.PlayAction(record, "Alert")
+	setAlertMark(record, true)
+	-- The sound hook, for anyone close enough to hear it.
+	for _, player in Players:GetPlayers() do
+		local pRoot = livingRoot(player)
+		if
+			pRoot
+			and (pRoot.Position - root.Position).Magnitude
+				<= record.Config.AggroRange * ENEMY.AlertHearFactor
+		then
+			Notify:FireClient(player, { Text = "", Kind = "enemyAlert" })
+		end
+	end
+	task.delay(time, function()
+		setAlertMark(record, false)
+	end)
+end
+
+-- Hold or release an idle posture (F7: some guards lean, some warm their hands).
+local function setIdlePose(record, on: boolean)
+	if not record.IdlePose or record.IdlePosed == on then
+		return
+	end
+	record.IdlePosed = on
+	EnemyAnimator.SetPose(record, if on then record.IdlePose else nil)
+end
+
 -- ── AI tick ─────────────────────────────────────────────────────
 -- Playtest 5, item 1. The old Attack branch kept walking INTO the player while a timer
 -- subtracted health: a damage-over-time field with legs. Now a fight has a rhythm:
+--   Alert   notice: stop, face, "!" (F8)
 --   Chase   close to the stand-off ring around the player, never into them
 --   Hold    stop at StandoffDistance and face the player, stepping back if crowded
 --   Windup  committed: no moving, no turning (that's what makes dodging possible)
@@ -210,113 +358,275 @@ function EnemyService.Think(record, _dt: number)
 	if not root or humanoid.Health <= 0 or record.Attacking then
 		return
 	end
+	local now = os.clock()
 
-	-- Closest living player.
-	local best: Player? = nil
-	local bestRoot: BasePart? = nil
-	local bestDist = math.huge
-	for _, player in Players:GetPlayers() do
-		local pRoot = livingRoot(player)
-		if pRoot then
-			local d = flat(pRoot.Position - root.Position).Magnitude
-			if d < bestDist then
-				best, bestRoot, bestDist = player, pRoot, d
+	-- Target: keep the current one while it stays in chase range; otherwise the closest
+	-- living player in aggro range that can be seen.
+	local target: Player? = record.Target
+	local targetRoot: BasePart? = nil
+	local dist = math.huge
+	if target then
+		targetRoot = livingRoot(target)
+		if targetRoot then
+			dist = flat(targetRoot.Position - root.Position).Magnitude
+			if dist > cfg.AggroRange * ENEMY.ChaseRangeFactor then
+				targetRoot = nil
+			end
+		end
+		if not targetRoot then
+			target = nil
+			record.Target = nil
+			record.LostTargetAt = now
+		end
+	end
+	if not target then
+		local best = math.huge
+		for _, player in Players:GetPlayers() do
+			local pRoot = livingRoot(player)
+			if pRoot then
+				local d = flat(pRoot.Position - root.Position).Magnitude
+				if d <= cfg.AggroRange and d < best and canSee(record, pRoot.Position) then
+					target, targetRoot, best = player, pRoot, d
+				end
+			end
+		end
+		dist = best
+		if target then
+			record.Target = target
+			setIdlePose(record, false)
+			-- Notice first. A guard re-finding you soon after losing you skips the surprise.
+			if now - record.LostTargetAt > ENEMY.AlertCooldown then
+				startAlert(record, targetRoot :: BasePart, ENEMY.AlertTime)
+				return
 			end
 		end
 	end
 
-	local leashed = (root.Position - record.SpawnCFrame.Position).Magnitude > GameConfig.Enemy.LeashDistance
+	local leashed = flat(root.Position - record.SpawnCFrame.Position).Magnitude > ENEMY.LeashDistance
 
-	if best and bestRoot and bestDist <= cfg.AggroRange and not leashed then
-		record.Target = best
-		local standoff = cfg.StandoffDistance or cfg.AttackRange
-		local away = flat(root.Position - bestRoot.Position)
+	if target and targetRoot and not leashed then
+		if now < record.AlertUntil then
+			if not cfg.FixedAim then
+				face(root, targetRoot.Position)
+			end
+			return
+		end
+		local ready = now >= record.NextAttackAt
+		local away = flat(root.Position - targetRoot.Position)
 		local awayDir = if away.Magnitude > 0.05 then away.Unit else -root.CFrame.LookVector
 
-		if bestDist <= cfg.AttackRange and os.clock() >= record.NextAttackAt then
-			EnemyService.BeginAttack(record, bestRoot)
-		elseif bestDist > standoff then
-			-- Chase to the stand-off ring, not to the player's position.
+		-- STATIC (F5): a fixed emplacement. Fires on its interval at whoever is in range.
+		if cfg.Static then
+			record.State = "Hold"
+			if not cfg.FixedAim then
+				face(root, targetRoot.Position)
+			end
+			if ready and dist <= cfg.AttackRange then
+				EnemyService.BeginAttack(record, targetRoot)
+			end
+			return
+		end
+
+		-- RANGED (F2): hold the preferred distance, back off when closed on, and shoot.
+		if cfg.PreferredRange then
+			if dist < cfg.RetreatRange then
+				record.State = "Retreat"
+				humanoid:MoveTo(root.Position + awayDir * cfg.RetreatStep)
+			elseif dist > cfg.PreferredRange then
+				record.State = "Chase"
+				humanoid:MoveTo(targetRoot.Position + awayDir * cfg.PreferredRange)
+			else
+				record.State = "Hold"
+				humanoid:MoveTo(root.Position)
+				face(root, targetRoot.Position)
+			end
+			if ready and dist <= cfg.AttackRange and record.State ~= "Retreat" then
+				EnemyService.BeginAttack(record, targetRoot)
+			end
+			return
+		end
+
+		-- MELEE, with the optional leap (F4) and strafe.
+		local standoff = cfg.StandoffDistance or cfg.AttackRange
+		local leap = cfg.Leap
+		if ready and leap and dist <= leap.Range and dist >= leap.MinRange then
+			EnemyService.BeginAttack(record, targetRoot)
+		elseif ready and dist <= cfg.AttackRange then
+			EnemyService.BeginAttack(record, targetRoot)
+		elseif dist > standoff then
+			-- Chase to the stand-off ring, not to the player's position. A strafing enemy
+			-- weaves across the line of approach: erratic, hard to time (F4).
 			record.State = "Chase"
-			humanoid:MoveTo(bestRoot.Position + awayDir * standoff)
+			local goal = targetRoot.Position + awayDir * standoff
+			if cfg.Strafe then
+				local side = Vector3.new(-awayDir.Z, 0, awayDir.X)
+				goal += side * math.sin(now * ENEMY.StrafeSpeed + record.Seed) * cfg.Strafe
+			end
+			humanoid:MoveTo(goal)
 		else
 			record.State = "Hold"
-			if bestDist < standoff - GameConfig.Enemy.StandoffSlack then
-				humanoid:MoveTo(bestRoot.Position + awayDir * standoff) -- crowded: step back
+			if dist < standoff - ENEMY.StandoffSlack then
+				humanoid:MoveTo(targetRoot.Position + awayDir * standoff) -- crowded: step back
 			else
 				humanoid:MoveTo(root.Position) -- stop
-				face(root, bestRoot.Position)
+				face(root, targetRoot.Position)
 			end
 		end
 		return
 	end
 
-	-- No target: patrol, or walk home.
-	record.Target = nil
+	-- No target: patrol, idle in a posture, or walk home.
+	if cfg.Static then
+		record.State = "Idle"
+		return
+	end
 	if leashed then
 		record.State = "Return"
 		humanoid:MoveTo(record.SpawnCFrame.Position)
 	elseif record.PatrolA and record.PatrolB then
 		record.State = "Patrol"
-		local target = record.PatrolTarget or record.PatrolA
-		if (root.Position - target).Magnitude < 6 then
-			record.PatrolTarget = if target == record.PatrolA then record.PatrolB else record.PatrolA
-			target = record.PatrolTarget
+		local patrolTarget = record.PatrolTarget or record.PatrolA
+		if (root.Position - patrolTarget).Magnitude < 6 then
+			record.PatrolTarget = if patrolTarget == record.PatrolA then record.PatrolB else record.PatrolA
+			patrolTarget = record.PatrolTarget
 		end
-		humanoid:MoveTo(target)
+		humanoid:MoveTo(patrolTarget)
 	else
 		record.State = "Idle"
+		humanoid:MoveTo(root.Position)
+		setIdlePose(record, true)
 	end
 end
 
 -- Is `pos` inside this enemy's strike area, measured from the facing it committed to?
 local function inStrike(origin: CFrame, cfg, pos: Vector3): boolean
 	local p = origin:PointToObjectSpace(pos)
-	local E = GameConfig.Enemy
-	return math.abs(p.X) <= E.StrikeWidth / 2
-		and p.Z <= E.StrikeBackReach
+	return math.abs(p.X) <= ENEMY.StrikeWidth / 2
+		and p.Z <= ENEMY.StrikeBackReach
 		and p.Z >= -cfg.AttackRange
-		and math.abs(p.Y) <= E.StrikeHeight
+		and math.abs(p.Y) <= ENEMY.StrikeHeight
+end
+
+-- An area attack's floor marker (F6): the exact circle the server will test, painted at
+-- the enemy's feet and filling in over the windup. Same idea as Bronn's telegraphs.
+local function makeAreaMarker(record, origin: CFrame, radius: number, windup: number): BasePart
+	local root = record.Model.PrimaryPart :: BasePart
+	local drop = (record.Humanoid :: Humanoid).HipHeight + root.Size.Y / 2
+	local p = Instance.new("Part")
+	p.Name = "Telegraph"
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Shape = Enum.PartType.Cylinder
+	p.Material = Enum.Material.Neon
+	p.Color = Palette.bleed
+	p.Transparency = 0.85
+	p.Size = Vector3.new(0.1, radius * 2, radius * 2)
+	p.CFrame = origin * CFrame.new(0, -drop + 0.08, 0) * CFrame.Angles(0, 0, math.rad(90))
+	p.Parent = telegraphs
+	TweenService:Create(p, TweenInfo.new(windup, Enum.EasingStyle.Linear), {
+		Transparency = GameConfig.Captain.TelegraphTransparency,
+	}):Play()
+	return p
 end
 
 -- One full attack: committed windup → strike → recovery. All damage is decided here, on
--- the server; clients only see the replicated pose (EnemyAnimator).
+-- the server; clients only see the replicated pose (EnemyAnimator). What the strike IS
+-- comes from config: a box in front, a projectile, a leap, or an area slam.
 function EnemyService.BeginAttack(record, targetRoot: BasePart)
 	local cfg = record.Config
 	local humanoid: Humanoid = record.Humanoid
 	local root = record.Model.PrimaryPart :: BasePart
-	local windup = cfg.WindupTime or 0
+	-- Timing varies a little per attack (F7), so the player reads the animation rather than
+	-- memorising a stopwatch.
+	local jitter = 1 + (math.random() * 2 - 1) * ENEMY.TimingJitter
+	local windup = (cfg.WindupTime or 0) * jitter
 	local recovery = cfg.RecoveryTime or 0
 
 	record.Attacking = true
 	record.State = "Windup"
 	record.AttackToken += 1
 	local token = record.AttackToken
-	record.NextAttackAt = os.clock() + cfg.AttackCooldown
+	record.NextAttackAt = os.clock() + cfg.AttackCooldown * jitter
 
 	-- Commit: plant, face the player ONCE, and stop turning until recovery is over.
-	humanoid:MoveTo(root.Position)
+	-- A fixed-aim emplacement keeps its spawn facing instead.
+	if not cfg.Static then
+		humanoid:MoveTo(root.Position)
+	end
 	humanoid.AutoRotate = false
-	face(root, targetRoot.Position)
+	if not cfg.FixedAim then
+		face(root, targetRoot.Position)
+	end
 	local origin = root.CFrame
+	local marker: BasePart? = nil
+	if cfg.Telegraph then
+		marker = makeAreaMarker(record, origin, cfg.Telegraph.Radius, windup)
+	end
 	EnemyAnimator.AttackPhase(record, "Windup", windup)
 
 	local function stillOn(): boolean
 		return record.AttackToken == token and record.State ~= "Dead" and record.Model.Parent ~= nil
 	end
+	local function finish()
+		if marker then
+			marker:Destroy()
+			marker = nil
+		end
+	end
+	local attackName = cfg.AttackName or "ATTACK"
 
 	task.delay(windup, function()
 		if not stillOn() then
+			finish()
 			return
 		end
-		-- Strike: one test, now, against the committed facing. Step out during the windup
-		-- and it misses.
 		record.State = "Strike"
 		EnemyAnimator.AttackPhase(record, "Strike", 0)
-		for _, player in Players:GetPlayers() do
-			local pRoot = livingRoot(player)
-			if pRoot and inStrike(origin, cfg, pRoot.Position) then
-				EnemyService.DamagePlayer(record, player, cfg.Damage, cfg.AttackName or "ATTACK")
+
+		if cfg.Projectile then
+			-- A visible, dodgeable shot along the committed facing (F2, F5).
+			ProjectileService.Fire(record, origin, cfg.Projectile, cfg.Damage, attackName)
+		elseif cfg.Leap then
+			-- Off the ground toward the target; the bite lands where the leap does (F4).
+			local leap = cfg.Leap
+			local aim = flat(targetRoot.Position - root.Position)
+			local dir = if aim.Magnitude > 0.05 then aim.Unit else origin.LookVector
+			root.AssemblyLinearVelocity = dir * leap.Speed + Vector3.new(0, leap.Lift, 0)
+			task.delay(leap.AirTime, function()
+				if not stillOn() then
+					return
+				end
+				for _, player in Players:GetPlayers() do
+					local pRoot = livingRoot(player)
+					if pRoot and flat(pRoot.Position - root.Position).Magnitude <= cfg.AttackRange then
+						EnemyService.DamagePlayer(record, player, cfg.Damage, attackName)
+					end
+				end
+			end)
+		elseif cfg.Telegraph then
+			-- The painted circle, exactly (F6).
+			if marker then
+				marker.Transparency = 0
+			end
+			local radius = cfg.Telegraph.Radius
+			for _, player in Players:GetPlayers() do
+				local pRoot = livingRoot(player)
+				if pRoot and flat(pRoot.Position - origin.Position).Magnitude <= radius then
+					EnemyService.DamagePlayer(record, player, cfg.Damage, attackName)
+				end
+			end
+			task.delay(GameConfig.Captain.ImpactPause, finish)
+		else
+			-- Strike: one test, now, against the committed facing. Step out during the
+			-- windup and it misses.
+			for _, player in Players:GetPlayers() do
+				local pRoot = livingRoot(player)
+				if pRoot and inStrike(origin, cfg, pRoot.Position) then
+					EnemyService.DamagePlayer(record, player, cfg.Damage, attackName)
+				end
 			end
 		end
 
@@ -327,7 +637,7 @@ function EnemyService.BeginAttack(record, targetRoot: BasePart)
 			if not stillOn() then
 				return
 			end
-			humanoid.AutoRotate = true
+			humanoid.AutoRotate = not cfg.Static
 			record.Attacking = false
 			record.State = "Hold"
 		end)
@@ -376,7 +686,7 @@ end
 -- a launch. Enemies never collide with players, so this can't push anyone around.
 local function knockback(record, from: Vector3, impulse: number)
 	local root = record.Model.PrimaryPart :: BasePart?
-	if not root or impulse <= 0 then
+	if not root or impulse <= 0 or record.Config.Static then
 		return
 	end
 	local away = flat(root.Position - from)
@@ -401,8 +711,10 @@ function EnemyService.Stagger(record, attacker: Player?)
 	record.AttackToken += 1
 	record.Attacking = false
 	record.State = "Stagger"
-	humanoid.AutoRotate = true
-	humanoid:MoveTo(root.Position)
+	humanoid.AutoRotate = not cfg.Static
+	if not cfg.Static then
+		humanoid:MoveTo(root.Position)
+	end
 
 	EnemyAnimator.Interrupt(record) -- glow off, attack pose released
 	local hitShare = GameConfig.Poise.StaggerHitShare
@@ -427,8 +739,20 @@ export type HitInfo = {
 	Contact: Vector3?, -- where the blow landed, for sparks and numbers (E8)
 	Knockback: number?, -- impulse per unit mass; finishers and hammers
 	Finisher: boolean?,
+	Heavy: boolean?, -- a heavy attack (E2): the only thing that moves a brute's poise
+	GuardBreak: boolean?, -- breaks a shield guard's block (heavy attacks, axes)
 	PoiseDamage: number?, -- defaults to the damage dealt
 }
+
+-- Is the attacker in front of the enemy, inside its shield arc?
+local function frontal(record, from: Vector3, arc: number): boolean
+	local root = record.Model.PrimaryPart :: BasePart
+	local toAttacker = flat(from - root.Position)
+	if toAttacker.Magnitude < 0.05 then
+		return true
+	end
+	return root.CFrame.LookVector:Dot(toAttacker.Unit) >= math.cos(math.rad(arc / 2))
+end
 
 -- Called ONLY by CombatService after full server-side validation.
 function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player, info: HitInfo?)
@@ -448,27 +772,68 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 	local from = if attackerRoot and attackerRoot:IsA("BasePart")
 		then attackerRoot.Position
 		else root.Position
+	local now = os.clock()
+
+	-- Being hit is being found (F8): a short alert, then the fight, whatever the sightline.
+	if
+		not record.Options.Brain
+		and record.Target ~= attacker
+		and attackerRoot
+		and attackerRoot:IsA("BasePart")
+	then
+		record.Target = attacker
+		setIdlePose(record, false)
+		if not record.Attacking and now >= record.StaggeredUntil then
+			startAlert(record, attackerRoot, ENEMY.AlertTimeHit)
+		end
+	end
+
+	-- A shield (F3): frontal hits that don't break guard do nothing to the enemy, loudly.
+	-- Heavy attacks and guard-breaking weapons break it open; so does attacking from behind.
+	if cfg.Shield and now >= record.StaggeredUntil and frontal(record, from, cfg.Shield.Arc) then
+		if hit.GuardBreak then
+			EnemyService.Stagger(record, attacker) -- guard broken: open
+		else
+			record.LastHitAt = now
+			if not record.Attacking then
+				EnemyAnimator.PlayAction(record, "Block")
+			end
+			HitConfirm:FireAllClients({
+				Kind = "blocked",
+				Position = hit.Contact or root.Position,
+				Attacker = attacker.UserId,
+				Target = model,
+			})
+			return true -- the swing connected, with the shield
+		end
+	end
 
 	humanoid.Health = math.max(0, humanoid.Health - amount)
 	local killed = humanoid.Health <= 0
-	local now = os.clock()
 	record.LastHitAt = now
 
 	-- Poise, then the reaction: a stagger if it broke, else a flinch if the enemy isn't
 	-- committed to an attack (a flinch mid-windup would lie about the strike still coming).
-	local staggered = false
-	if not killed and cfg.Poise and cfg.Poise > 0 then
-		record.Poise -= hit.PoiseDamage or amount
+	-- A brute's poise only moves for heavy and guard-breaking hits (F6).
+	local staggered = record.State == "Stagger" and record.StaggeredUntil > now
+	if not killed and cfg.Poise and cfg.Poise > 0 and not staggered then
+		local poiseDamage = hit.PoiseDamage or amount
+		if cfg.LightPoiseImmune and not (hit.Heavy or hit.GuardBreak) then
+			poiseDamage = 0
+		end
+		record.Poise -= poiseDamage
 		if record.Poise <= 0 and now >= record.StaggeredUntil then
 			EnemyService.Stagger(record, attacker)
 			staggered = true
 		end
 	end
 	if not killed and not staggered and not record.Attacking and now >= record.StaggeredUntil then
-		EnemyAnimator.PlayAction(record, "Flinch")
-		knockback(record, from, GameConfig.Combat.FlinchKnockback)
+		if not cfg.LightPoiseImmune or hit.Heavy then
+			EnemyAnimator.PlayAction(record, "Flinch")
+			knockback(record, from, GameConfig.Combat.FlinchKnockback)
+		end
 	end
-	if not killed and hit.Knockback and hit.Knockback > 0 then
+	if not killed and hit.Knockback and hit.Knockback > 0 and not cfg.LightPoiseImmune then
 		knockback(record, from, hit.Knockback)
 	end
 
@@ -532,6 +897,7 @@ function EnemyService.Kill(record, killer: Player?)
 	-- Freeze first (hold the exact pose, stop every clip), then detach from the animator.
 	EnemyAnimator.Freeze(record)
 	EnemyAnimator.Detach(record)
+	setAlertMark(record, false)
 
 	local model = record.Model
 	local humanoid: Humanoid = record.Humanoid
