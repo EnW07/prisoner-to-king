@@ -13,17 +13,13 @@ local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local ExtractionService = {}
 local ctx
 local world
-local prompt: ProximityPrompt
 local ScreenEvent: RemoteEvent
 local Notify: RemoteEvent
 
-function ExtractionService.Init(context, builtWorld)
-	ctx = context
-	world = builtWorld
-	ScreenEvent = Net.Event("ScreenEvent")
-	Notify = Net.Event("Notify")
-
-	prompt = Instance.new("ProximityPrompt")
+-- One prompt per pad; the rule is the same. `route` names the pad for analytics (H3: the
+-- postern is the locked shortcut; knowing about it is what gives run 2 a different plan).
+local function setupPad(pad: BasePart, route: string)
+	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Escape"
 	prompt.ObjectText = "ESCAPE WITH YOUR LOOT"
 	prompt.HoldDuration = GameConfig.Run.ExtractionChannelTime
@@ -32,7 +28,7 @@ function ExtractionService.Init(context, builtWorld)
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
 	prompt:SetAttribute("PTKGate", "extract")
-	prompt.Parent = world.ExtractionPad
+	prompt.Parent = pad
 
 	prompt.PromptButtonHoldBegan:Connect(function(player)
 		ctx.Analytics.Log(player, "FirstEscapeStarted", 1)
@@ -47,17 +43,33 @@ function ExtractionService.Init(context, builtWorld)
 	end)
 
 	prompt.Triggered:Connect(function(player)
-		ExtractionService.Complete(player)
+		ExtractionService.Complete(player, pad, route)
 	end)
+end
+
+function ExtractionService.Init(context, builtWorld)
+	ctx = context
+	world = builtWorld
+	ScreenEvent = Net.Event("ScreenEvent")
+	Notify = Net.Event("Notify")
+
+	setupPad(world.ExtractionPad, "sewer")
+	if world.PosternPad then
+		setupPad(world.PosternPad, "postern")
+	end
 end
 
 -- Called when the alarm goes off, to make the exit obvious. (§8: "Exit marker activates.")
 function ExtractionService.Reveal()
-	world.ExtractionPad.Material = Enum.Material.Neon
-	world.ExtractionPad.Color = Palette.escape
+	for _, pad in { world.ExtractionPad, world.PosternPad } do
+		if pad then
+			pad.Material = Enum.Material.Neon
+			pad.Color = Palette.escape
+		end
+	end
 end
 
-function ExtractionService.Complete(player: Player)
+function ExtractionService.Complete(player: Player, pad: BasePart?, route: string?)
 	local run = ctx.RunState.Get(player)
 	local profile = ctx.Data.Get(player)
 	if not run or not profile then
@@ -73,9 +85,17 @@ function ExtractionService.Complete(player: Player)
 	if not root then
 		return
 	end
-	if (root.Position - world.ExtractionPad.Position).Magnitude > 16 then
+	local target: BasePart = pad or world.ExtractionPad
+	if (root.Position - target.Position).Magnitude > 16 then
 		warn(("[Extraction] %s triggered the pad from out of range — ignored."):format(player.Name))
 		return
+	end
+	-- The postern only works for a player who actually opened it this run.
+	if route == "postern" and not run.PosternOpened then
+		return
+	end
+	if route == "postern" then
+		ctx.Analytics.Log(player, "ShortcutUsed", 1, { route = "postern" })
 	end
 
 	local banked = run.UnsecuredGold

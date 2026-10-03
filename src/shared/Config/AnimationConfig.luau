@@ -625,6 +625,19 @@ AnimationConfig.Poses = {
 		LeftElbow = { x = 70 },
 	},
 
+	-- Asleep on a bunk: the whole body tipped back flat, arms folded, head turned.
+	Sleep = {
+		Root = { x = -85, P = { 0, -1.6, 0.6 } },
+		Waist = { x = 4 },
+		Neck = { x = 10, y = 25 },
+		RightShoulder = { x = 70, y = 40 },
+		RightElbow = { x = 90 },
+		LeftShoulder = { x = 70, y = 40 },
+		LeftElbow = { x = 90 },
+		RightKnee = { x = -15 },
+		LeftKnee = { x = -10 },
+	},
+
 	-- Postures baked at spawn for the roster.
 	ArcherStance = {
 		LeftShoulder = { x = 30, y = 5 },

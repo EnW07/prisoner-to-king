@@ -114,7 +114,7 @@ function CombatService.HandleAttack(player: Player)
 	-- full rigs. MaxTargetsPerSwing still counts distinct enemies (models), not parts.
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = { ctx.EnemyService.GetContainer() }
+	params.FilterDescendantsInstances = { ctx.EnemyService.GetContainer(), ctx.Environment.GetBreakables() }
 	params.MaxParts = GameConfig.Combat.OverlapMaxParts
 
 	local parts = workspace:GetPartBoundsInBox(swingCF, swingSize, params)
@@ -127,6 +127,11 @@ function CombatService.HandleAttack(player: Player)
 	for _, hitPart in parts do
 		if hits >= GameConfig.Combat.MaxTargetsPerSwing then
 			break
+		end
+		-- Crates and barrels in the arc break (H4). They don't count against the target cap.
+		if hitPart:GetAttribute("Breakable") then
+			ctx.Environment.Break(hitPart, player)
+			continue
 		end
 		local model = hitPart:FindFirstAncestorOfClass("Model")
 		if model and not hitModels[model] and model:GetAttribute("EnemyId") then

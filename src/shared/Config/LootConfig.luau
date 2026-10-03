@@ -65,6 +65,30 @@ LootConfig.Tables = {
 		} :: { Entry },
 	},
 
+	-- Breakables (H4): clutter pays a little, sometimes. Barrels a touch more than crates.
+	crate = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 55 },
+			{ Kind = "Gold", Weight = 45, Min = 3, Max = 9 },
+		} :: { Entry },
+	},
+	barrel = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 45 },
+			{ Kind = "Gold", Weight = 55, Min = 5, Max = 14 },
+		} :: { Entry },
+	},
+	-- The barracks chest (H1 §5): higher risk, better loot, and it rings the alarm.
+	barracks_chest = {
+		Rolls = 2,
+		Entries = {
+			{ Kind = "Gold", Weight = 70, Min = 30, Max = 60 },
+			{ Kind = "Weapon", Id = "guard_sword", Weight = 30 },
+		} :: { Entry },
+	},
+
 	-- M2 brief item 1: the Guard Sword is guaranteed. The weighted Captain's Greatsword
 	-- chance is added with the rare-drops work (m2/rare-drops).
 	captain_bronn = {

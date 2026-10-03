@@ -135,6 +135,8 @@ function InteractionService.Init(context, builtWorld)
 		-- this player only, this run only. `run.DoorOpened` is reset by StartRun.
 	end)
 
+	InteractionService.InitCastle()
+
 	-- ── 4. THE CHEST → ALARM ───────────────────────────────────
 	local chestPrompt = makePrompt(world.Chest, "Open", "CHEST", 0.6)
 	chestPrompt:SetAttribute("PTKGate", "chest")
@@ -179,11 +181,107 @@ function InteractionService.Init(context, builtWorld)
 	end)
 end
 
+-- ── The castle beyond the vault (Section H) ────────────────────
+function InteractionService.InitCastle()
+	-- 5. THE POSTERN KEY (H3): on a table in the barracks, between sleepers and a brute.
+	local keyPrompt = makePrompt(world.PosternKey, "Steal", "POSTERN KEY", 0.5)
+	keyPrompt:SetAttribute("PTKGate", "posternkey")
+	keyPrompt.Triggered:Connect(function(player)
+		if not validate(player, world.PosternKey) then
+			return
+		end
+		local run = ctx.RunState.Get(player)
+		if not run or run.HasPosternKey then
+			return
+		end
+		ctx.RunState.GivePosternKey(player)
+		ctx.Analytics.Log(player, "PosternKeyTaken", 1)
+	end)
+
+	-- 6. THE POSTERN GATE: locked, iron, in the vault's north wall. Opens per player, per
+	-- run, like the cellblock door (the gate part is shared; the client's gate opens it).
+	local gatePrompt = makePrompt(world.PosternGate, "Unlock", "LOCKED — NEEDS THE POSTERN KEY", 0.5)
+	gatePrompt:SetAttribute("PTKGate", "postern")
+	gatePrompt.Triggered:Connect(function(player)
+		if not validate(player, world.PosternGate) then
+			return
+		end
+		local run = ctx.RunState.Get(player)
+		if not run then
+			return
+		end
+		if not run.HasPosternKey then
+			Notify:FireClient(
+				player,
+				{ Text = "YOU NEED THE POSTERN KEY", Sub = "IT IS IN THE BARRACKS", Kind = "warn" }
+			)
+			return
+		end
+		run.PosternOpened = true
+		ctx.Analytics.Log(player, "PosternOpened", 1)
+		Notify:FireClient(player, { Text = "POSTERN OPEN", Sub = "A SHORTER WAY OUT", Kind = "milestone" })
+		ctx.Economy.PushState(player)
+	end)
+
+	-- 7. THE BARRACKS CHEST: better loot, and it rings the alarm (I2: risk attached).
+	local barracksPrompt = makePrompt(world.BarracksChest, "Open", "BARRACKS CHEST", 0.6)
+	barracksPrompt:SetAttribute("PTKGate", "barrackschest")
+	barracksPrompt.Triggered:Connect(function(player)
+		if not validate(player, world.BarracksChest) then
+			return
+		end
+		local run = ctx.RunState.Get(player)
+		if not run or run.BarracksChestOpened then
+			return
+		end
+		run.BarracksChestOpened = true
+		local chest: BasePart = world.BarracksChest
+		local mouth = chest.CFrame * CFrame.new(0, chest.Size.Y / 2, -chest.Size.Z)
+		ctx.LootService.DropTable("barracks_chest", mouth.Position, player)
+		ctx.Analytics.Log(player, "BarracksChestOpened", 1)
+		if run.State ~= "InDanger" or run.Objective ~= "RUN! ESCAPE WITH YOUR LOOT" then
+			InteractionService.TriggerAlarm(player)
+		end
+		ctx.Economy.PushState(player)
+	end)
+
+	-- 8. SECRETS (H5): a loose brick (one of two spots is live per server), the chapel's
+	-- relic, the stash at the end of the dark sewer branch. Each pays once per run.
+	local function secret(part: BasePart, action: string, label: string, id: string, pay: () -> number)
+		local prompt = makePrompt(part, action, label, 0.5)
+		prompt:SetAttribute("PTKGate", "always")
+		prompt.Triggered:Connect(function(player)
+			if not validate(player, part) then
+				return
+			end
+			if not ctx.RunState.TakeSecret(player, id) then
+				Notify:FireClient(player, { Text = "ALREADY TAKEN", Kind = "warn" })
+				return
+			end
+			local gold = pay()
+			ctx.RunState.AddUnsecuredGold(player, gold)
+			Notify:FireClient(player, { Text = ("+%d Gold"):format(gold), Sub = "A SECRET", Kind = "gold" })
+			ctx.Analytics.Log(player, "SecretFound", 1, { secret = id })
+		end)
+	end
+	local S = GameConfig.Secrets
+	secret(world.LooseBrick, "Pry", "LOOSE BRICK", "loose_brick", function()
+		return math.random(S.LooseBrickGold[1], S.LooseBrickGold[2])
+	end)
+	secret(world.SewerStash, "Pry", "RUSTED STASH", "sewer_stash", function()
+		return math.random(S.SewerStashGold[1], S.SewerStashGold[2])
+	end)
+	secret(world.ChapelRelic, "Steal", "GOLDEN RELIC", "chapel_relic", function()
+		return S.ChapelRelicGold
+	end)
+end
+
 -- ── Alarm ───────────────────────────────────────────────────────
 function InteractionService.TriggerAlarm(player: Player)
 	ctx.RunState.SetObjective(player, "RUN! ESCAPE WITH YOUR LOOT")
 	ctx.RunState.SetState(player, "InDanger")
 	ctx.Analytics.Log(player, "AlarmTriggered", 1)
+	ctx.EnemyService.WakeAll() -- the barracks hears the bell
 
 	Notify:FireAllClients({ Text = "ALARM! GUARDS ARE COMING", Kind = "alarm" })
 	ctx.Extraction.Reveal()

@@ -129,6 +129,101 @@ local function bobLoot(dt: number)
 	end
 end
 
+-- ── Set dressing that moves (H1): rats, drips, the ghost knight, water ──
+-- All local, all cheap: one RenderStepped pass over a handful of parts.
+type Rat = { Part: BasePart, A: Vector3, B: Vector3, T: number, Speed: number, Pause: number }
+local rats: { Rat } = {}
+type Drip = { Part: BasePart, Top: number, T: number, Period: number }
+local drips: { Drip } = {}
+local ghosts: { { Parts: { BasePart }, Seed: number } } = {}
+local waters: { { Part: BasePart, Base: number } } = {}
+
+local function addRat(part: Instance)
+	if not part:IsA("BasePart") then
+		return
+	end
+	local a, b = part:GetAttribute("A"), part:GetAttribute("B")
+	if typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then
+		return
+	end
+	table.insert(
+		rats,
+		{ Part = part, A = a, B = b, T = math.random(), Speed = 0.18 + math.random() * 0.1, Pause = 0 }
+	)
+end
+
+local function addDrip(part: Instance)
+	if part:IsA("BasePart") then
+		table.insert(drips, {
+			Part = part,
+			Top = tonumber(part:GetAttribute("Top")) or part.Position.Y,
+			T = math.random(),
+			Period = 1.6 + math.random() * 1.4,
+		})
+	end
+end
+
+local function addGhost(model: Instance)
+	local parts = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			table.insert(parts, d)
+		end
+	end
+	table.insert(ghosts, { Parts = parts, Seed = math.random() * 10 })
+end
+
+local function addWater(part: Instance)
+	if part:IsA("BasePart") then
+		table.insert(waters, { Part = part, Base = part.Position.Y })
+	end
+end
+
+local dressClock = 0
+local function animateDressing(dt: number)
+	dressClock += dt
+	for _, r in rats do
+		if r.Part.Parent then
+			if r.Pause > 0 then
+				r.Pause -= dt
+			else
+				r.T += dt * r.Speed
+				if r.T >= 1 then
+					r.T = 0
+					r.A, r.B = r.B, r.A
+					r.Pause = 0.8 + math.random() * 2
+				end
+				local pos = r.A:Lerp(r.B, r.T) + Vector3.new(0, 0.25, 0)
+				r.Part.CFrame = CFrame.lookAt(pos, Vector3.new(r.B.X, pos.Y, r.B.Z))
+			end
+		end
+	end
+	for _, d in drips do
+		if d.Part.Parent then
+			d.T = (d.T + dt / d.Period) % 1
+			-- Fall from the ceiling, fast toward the end (gravity), reappear at the top.
+			local fall = d.T * d.T
+			d.Part.Position = Vector3.new(d.Part.Position.X, d.Top - fall * 9, d.Part.Position.Z)
+			d.Part.Transparency = if d.T > 0.92 then 1 else 0.3
+		end
+	end
+	for _, g in ghosts do
+		local t = (math.sin(dressClock * 0.7 + g.Seed) + 1) / 2 -- 0..1, slow
+		local transparency = 0.5 + t * 0.45
+		for _, p in g.Parts do
+			if p.Parent then
+				p.Transparency = transparency
+			end
+		end
+	end
+	for _, w in waters do
+		if w.Part.Parent then
+			w.Part.Position =
+				Vector3.new(w.Part.Position.X, w.Base + math.sin(dressClock * 1.3) * 0.06, w.Part.Position.Z)
+		end
+	end
+end
+
 -- ── Trophies (G3) ──────────────────────────────────────────────
 -- The hideout is shared; a trophy is yours. Tagged parts carry a Trophy attribute naming
 -- the kill; StateUpdate says whether THIS player has it, and the parts show or hide locally.
@@ -159,6 +254,23 @@ function WorldFXController.Init()
 	end
 	CollectionService:GetInstanceAddedSignal("PTKChestLid"):Connect(setupLid)
 
+	for _, part in CollectionService:GetTagged("PTKRat") do
+		addRat(part)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKRat"):Connect(addRat)
+	for _, part in CollectionService:GetTagged("PTKDrip") do
+		addDrip(part)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKDrip"):Connect(addDrip)
+	for _, model in CollectionService:GetTagged("PTKGhost") do
+		addGhost(model)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKGhost"):Connect(addGhost)
+	for _, part in CollectionService:GetTagged("PTKWater") do
+		addWater(part)
+	end
+	CollectionService:GetInstanceAddedSignal("PTKWater"):Connect(addWater)
+
 	task.spawn(function()
 		local drops = workspace:WaitForChild("LootDrops")
 		for _, part in drops:GetChildren() do
@@ -177,6 +289,7 @@ function WorldFXController.Init()
 	RunService.RenderStepped:Connect(function(dt)
 		flickerTorches(dt)
 		bobLoot(dt)
+		animateDressing(dt)
 	end)
 end
 

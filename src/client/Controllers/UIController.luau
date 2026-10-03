@@ -461,6 +461,9 @@ function UIController.OnNotify(data)
 	if data.Kind == "weapon" and data.WeaponId then
 		return -- LootRevealController shows weapons as a 3D reveal, not a toast
 	end
+	if data.Kind == "room" and not data.First then
+		return -- re-entering a room says nothing; the first time names it
+	end
 	toastToken += 1
 	local token = toastToken
 
