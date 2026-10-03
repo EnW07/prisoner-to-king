@@ -91,9 +91,19 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 	end
 	local opts = options or {}
 
-	local model, humanoid = buildRig(enemyId, cfg, cframe)
-	model:SetAttribute("EnemyId", enemyId)
-	model.Parent = container
+	-- Build and set up first; register as active LAST. A spawn that fails part-way must not
+	-- leave a hittable, killable body with no AI behind it (playtest 5, Bronn).
+	local model: Model
+	local humanoid: Humanoid
+	local ok, err = pcall(function()
+		model, humanoid = buildRig(enemyId, cfg, cframe)
+		model:SetAttribute("EnemyId", enemyId)
+		model.Parent = container
+	end)
+	if not ok then
+		warn(("[Enemy] Could not build %s: %s"):format(enemyId, tostring(err)))
+		return nil
+	end
 
 	local record = {
 		Model = model,
@@ -110,16 +120,25 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		Respawn = opts.Respawn == true,
 		Options = opts,
 	}
-	active[model] = record
 
-	-- Server owns enemy physics. Otherwise Roblox may hand a nearby player network
-	-- ownership, and that client could then move the enemy. It also keeps the locomotion
-	-- velocity EnemyAnimator reads authoritative.
-	local root = model.PrimaryPart
-	if root then
-		root:SetNetworkOwner(nil)
+	local setupOk, setupErr = pcall(function()
+		-- Server owns enemy physics. Otherwise Roblox may hand a nearby player network
+		-- ownership, and that client could then move the enemy. It also keeps the
+		-- locomotion velocity EnemyAnimator reads authoritative.
+		local root = model.PrimaryPart
+		if root then
+			root:SetNetworkOwner(nil)
+		end
+		EnemyAnimator.Attach(record)
+	end)
+	if not setupOk then
+		warn(("[Enemy] Could not set up %s; removing it: %s"):format(enemyId, tostring(setupErr)))
+		EnemyAnimator.Detach(record)
+		model:Destroy()
+		return nil
 	end
-	EnemyAnimator.Attach(record)
+
+	active[model] = record
 	return record
 end
 
