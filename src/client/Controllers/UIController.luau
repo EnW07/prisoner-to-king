@@ -413,7 +413,8 @@ function UIController.OnState(state)
 		local first = shownWeapon == ""
 		shownWeapon = weaponText
 		weaponName.Text = state.Weapon or "Fists"
-		weaponDamage.Text = ("%d DMG"):format(state.WeaponDamage or 0)
+		local bonus = state.DamageBonus or 0
+		weaponDamage.Text = UIStyle.Damage((state.WeaponDamage or 0) - bonus, bonus)
 		if state.WeaponId ~= shownWeaponId then
 			shownWeaponId = state.WeaponId
 			ViewportIcon.SetModel(weaponIcon, state.WeaponId and WeaponModel.Build(state.WeaponId) or nil)

@@ -170,6 +170,17 @@ function UIStyle.SetDanger(panel: GuiObject, danger: boolean)
 	end
 end
 
+-- Damage, written the same way everywhere (HUD slot, inventory, loot reveal):
+-- "18 DMG" with no upgrades, "18 +10 DMG" with them. The weapon's own damage first, then
+-- what your weapon upgrades add, so the bonus is visible rather than folded into one number.
+function UIStyle.Damage(base: number, bonus: number?): string
+	local b = bonus or 0
+	if b > 0 then
+		return ("%d +%d DMG"):format(base, b)
+	end
+	return ("%d DMG"):format(base)
+end
+
 -- Thousands separators: 1240 -> "1,240". Numbers must punch (art §5) and be readable fast.
 function UIStyle.Number(n: number): string
 	local s = tostring(math.floor(n))

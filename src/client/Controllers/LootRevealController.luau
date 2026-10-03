@@ -28,6 +28,7 @@ local LootRevealController = {}
 
 local EquipRequest: RemoteEvent
 local current: CanvasGroup? = nil
+local bonus = 0 -- latest weapon-upgrade bonus, so the card agrees with the HUD and inventory
 local token = 0
 
 -- Fly the card into the weapon slot and remove it: the weapon "goes into the inventory".
@@ -112,7 +113,7 @@ local function reveal(data)
 	local stats = UIStyle.Text(
 		"Stats",
 		content,
-		("%d DMG · %s"):format(weapon.Damage, weapon.Rarity:upper()),
+		("%s · %s"):format(UIStyle.Damage(weapon.Damage, bonus), weapon.Rarity:upper()),
 		UDim2.fromScale(1, 0.1),
 		nil,
 		24
@@ -153,6 +154,9 @@ end
 
 function LootRevealController.Init()
 	EquipRequest = Net.Event("EquipRequest")
+	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
+		bonus = state.DamageBonus or 0
+	end)
 	Net.Event("Notify").OnClientEvent:Connect(function(data)
 		if data.Kind == "weapon" and data.WeaponId then
 			reveal(data)
