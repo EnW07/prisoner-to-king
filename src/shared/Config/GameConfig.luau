@@ -51,8 +51,8 @@ local GameConfig = {
 
 	-- ── Combat ──────────────────────────────────────────────────
 	Combat = {
-		-- Server-side hit detection volume, projected in front of the attacker.
-		Range = 8,
+		-- Server-side hit detection volume, projected in front of the attacker. Depth is the
+		-- weapon's Reach (WeaponConfig); these are the cross-section.
 		Width = 6,
 		Height = 6,
 		MaxTargetsPerSwing = 3,
@@ -63,10 +63,18 @@ local GameConfig = {
 		CooldownGrace = 0.08,
 		-- Attack requests per second a client may send before being rate limited.
 		MaxAttackRate = 5,
-		-- The light combo's third stage is the finisher: biggest arc, most hit-stop, and it
-		-- shoves the enemy back by this impulse (studs/s, per unit mass). (E3, E8)
-		FinisherStage = 3,
+		-- The light combo (E3): damage per stage (the weapon's Combo list indexes this), and
+		-- the last stage is the finisher: biggest arc, most hit-stop, and it shoves the enemy
+		-- back by this impulse (studs/s, per unit mass) on top of the weapon's own. (E8)
+		ComboDamage = { 1, 1.1, 1.35 },
 		FinisherKnockback = 28,
+		-- The heavy attack (E2): hold the attack input this long and release. Slower, more
+		-- damage, breaks guard, knocks back, hits poise harder. The cooldown is per weapon.
+		HeavyHoldTime = 0.35,
+		HeavyKnockback = 24,
+		HeavyPoiseMultiplier = 1.6,
+		HeavyReachBonus = 1, -- studs added to the weapon's reach on a heavy
+		HeavyAfterLightFraction = 0.5, -- a heavy can't land sooner than this share of the light cooldown
 		-- A light hit that doesn't break poise still rocks an enemy that isn't mid-attack by
 		-- this much (E8 "a real flinch on light hits").
 		FlinchKnockback = 6,
@@ -282,6 +290,7 @@ local GameConfig = {
 		-- UIStyle.MIN_TOUCH_PX. SWING is largest; DASH sits left of it with a gap.
 		SwingButtonSize = 0.16,
 		DashButtonSize = 0.13,
+		HeavyButtonSize = 0.13,
 		ControlGap = 0.02,
 		-- 3D item icons (ViewportIcon). Close camera so icons read at phone size.
 		ViewportFov = 30,

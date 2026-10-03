@@ -170,6 +170,8 @@ AnimationConfig.Player = {
 	Light1 = nil,
 	Light2 = nil,
 	Light3 = nil,
+	Thrust1 = nil,
+	Thrust2 = nil,
 	Heavy = nil,
 	Dash = nil,
 	Block = nil,
@@ -182,6 +184,8 @@ AnimationConfig.Player = {
 		Light1 = "Light1",
 		Light2 = "Light2",
 		Light3 = "Light3",
+		Thrust1 = "Thrust1",
+		Thrust2 = "Thrust2",
 		Heavy = "Heavy",
 		Dash = "Dash",
 		Block = "Block",
@@ -1019,7 +1023,25 @@ AnimationConfig.Moves = {
 		},
 		Recover = { { Pose = "Rest", Time = 0.38, Style = "Sine", Dir = "InOut", Delay = ARM_LAST } },
 	},
-	-- Heavy attack (E2): slow coil, hard drop, long heavy recovery.
+	-- Spear thrusts (E6): the player's combo with a spear reuses the spearman's poses.
+	Thrust1 = {
+		Wind = { { Pose = "ThrustWind", Time = 0.14, Style = "Sine", Dir = "Out", Delay = ARM_LAG } },
+		Strike = {
+			{ Pose = "ThrustHit", Time = 0.08, Style = "Quint", Dir = "In", Delay = WRIST_LAG },
+			{ Pose = "ThrustThrough", Time = 0.1, Style = "Back", Dir = "Out", Hold = 0.04 },
+		},
+		Recover = { { Pose = "Rest", Time = 0.26, Style = "Sine", Dir = "InOut", Delay = ARM_LAST } },
+	},
+	Thrust2 = {
+		Wind = { { Pose = "ThrustWindDeep", Time = 0.16, Style = "Sine", Dir = "Out", Delay = ARM_LAG } },
+		Strike = {
+			{ Pose = "ThrustHit", Time = 0.07, Style = "Quint", Dir = "In", Delay = WRIST_LAG },
+			{ Pose = "ThrustThrough", Time = 0.12, Style = "Back", Dir = "Out", Hold = 0.08 },
+		},
+		Recover = { { Pose = "Rest", Time = 0.3, Style = "Sine", Dir = "InOut", Delay = ARM_LAST } },
+	},
+	-- Heavy attack (E2): slow coil, hard drop, long heavy recovery. The player holds the
+	-- Wind (PoseAnimator Only = {"Wind"}) and the release plays Strike and Recover.
 	Heavy = {
 		Wind = {
 			{ Pose = "HeavyWind", Time = 0.3, Style = "Back", Dir = "Out", Delay = ARM_LAG },

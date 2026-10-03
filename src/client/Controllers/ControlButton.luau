@@ -28,6 +28,7 @@ local ControlButton = {}
 export type Button = {
 	Panel: GuiObject,
 	Pressed: RBXScriptSignal, -- fires on touch/click down
+	Released: RBXScriptSignal, -- fires on touch/click up (hold-to-heavy)
 	SetCooldown: (remaining: number, total: number) -> (), -- 0 remaining = ready
 	SetLabel: (text: string) -> (),
 }
@@ -118,6 +119,7 @@ function ControlButton.Create(
 	hit.Parent = panel
 
 	local pressed = Instance.new("BindableEvent")
+	local released = Instance.new("BindableEvent")
 	local press = TweenInfo.new(UI.PopTime / 2)
 	hit.InputBegan:Connect(function(input)
 		if
@@ -134,6 +136,7 @@ function ControlButton.Create(
 			or input.UserInputType == Enum.UserInputType.MouseButton1
 		then
 			TweenService:Create(scale, TweenInfo.new(UI.PopTime, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+			released:Fire()
 		end
 	end)
 
@@ -160,6 +163,7 @@ function ControlButton.Create(
 	return {
 		Panel = panel,
 		Pressed = pressed.Event,
+		Released = released.Event,
 		SetCooldown = setCooldown,
 		SetLabel = function(t: string)
 			text.Text = t

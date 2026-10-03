@@ -321,7 +321,7 @@ local function onDealt(data)
 	end
 
 	local scale = FEEL.HitScaleMin + (FEEL.HitScaleMax - FEEL.HitScaleMin) * s
-	if data.Finisher then
+	if data.Finisher or data.Heavy then
 		scale *= FEEL.FinisherHitStopBonus
 	end
 	local numberScale = 1 + (FEEL.NumberScaleMax - 1) * s + (if data.Killed then FEEL.KillNumberBonus else 0)
