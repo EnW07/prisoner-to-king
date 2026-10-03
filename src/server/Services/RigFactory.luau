@@ -21,7 +21,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
-local ArmPose = require(game.ReplicatedStorage.Shared.ArmPose)
+local Rig = require(game.ReplicatedStorage.Shared.Anim.Rig)
 
 local RigFactory = {}
 
@@ -92,11 +92,14 @@ function RigFactory.Attach(
 	return p
 end
 
--- Rotate a joint's rest pose. Used for posture (a slouch is a bent waist, not a prop).
+-- Rotate a joint's rest pose and bake it: posture (a slouch is a bent waist, not a prop).
+-- Applied to the template, so every clone starts with it as its rest.
 local function bend(model: Model, jointName: string, rotation: CFrame)
-	local joint = ArmPose.FindJoint(model, jointName, "R15") -- Motor6D or AnimationConstraint
+	local rig = Rig.Open(model) -- Motor6D or AnimationConstraint form
+	local joint = rig and rig.Joints[jointName]
 	if joint then
-		ArmPose.Set(joint, rotation)
+		Rig.Set(joint, rotation)
+		Rig.Bake(joint)
 	end
 end
 
