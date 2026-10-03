@@ -356,6 +356,55 @@ function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Pl
 		end
 	end
 
+	-- Pity (I5, §13; schema 2): every boss kill adds Luck Charge. At full charge this
+	-- boss's roll is replaced by a guaranteed Rare-or-better weapon from its table, and the
+	-- charge resets. Never hide all progression behind pure randomness.
+	if cfg.Boss and killer then
+		local profile = ctx.Data.Get(killer)
+		local Pity = require(game.ReplicatedStorage.Shared.Config.GameConfig).Pity
+		if profile and profile.Meta then
+			local charge = profile.Meta.LuckCharge or 0
+			if charge >= Pity.FullCharge and tableDef then
+				local candidates = {}
+				local total = 0
+				local RANK = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6 }
+				for _, entry in tableDef.Entries do
+					if entry.Kind == "Weapon" and entry.Id then
+						local weapon = WeaponConfig.Get(entry.Id)
+						if weapon and (RANK[weapon.Rarity] or 0) >= RANK.Rare then
+							table.insert(candidates, entry)
+							total += entry.Weight
+						end
+					end
+				end
+				if #candidates > 0 then
+					local roll = math.random() * total
+					local acc = 0
+					for _, entry in candidates do
+						acc += entry.Weight
+						if roll <= acc then
+							LootService.Spawn("Weapon", position, entry.Id, killer.UserId)
+							break
+						end
+					end
+					profile.Meta.LuckCharge = 0
+					Notify:FireClient(
+						killer,
+						{ Text = "LUCK PAID OUT", Sub = "A RARE, GUARANTEED", Kind = "milestone" }
+					)
+					ctx.Analytics.Log(killer, "PityGuaranteed", 1, { enemy = enemyId })
+					ctx.Data.Save(killer, false)
+					ctx.Economy.PushState(killer)
+					return -- the guaranteed weapon replaces this boss's roll
+				end
+			end
+			profile.Meta.LuckCharge = math.min(Pity.FullCharge, charge + Pity.PerBossKill)
+			ctx.Analytics.Log(killer, "PityCharged", profile.Meta.LuckCharge, { enemy = enemyId })
+			ctx.Data.Save(killer, false)
+			ctx.Economy.PushState(killer)
+		end
+	end
+
 	for _, entry in LootService.RollTable(cfg.LootTable) do
 		if entry.Kind == "Gold" then
 			LootService.Spawn(

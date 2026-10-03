@@ -38,6 +38,9 @@ local function newProfile()
 			TotalEscapes = 0,
 			TotalDeaths = 0,
 			TotalRuns = 0,
+			-- Schema 2: the hideout trophy count (G3) and the pity meter's charge (I5).
+			CaptainKills = 0,
+			LuckCharge = 0,
 		},
 	}
 end
@@ -47,7 +50,20 @@ local function migrate(profile)
 	if type(profile) ~= "table" or type(profile.Version) ~= "number" then
 		return newProfile()
 	end
-	-- while profile.Version == 1 do ... profile.Version = 2 end   ← add future steps here
+	-- Each step moves a profile exactly one version forward and is idempotent. Fields are
+	-- only ever ADDED with explicit defaults; nothing is renamed or removed here.
+	if profile.Version == 1 then
+		-- 1 → 2 (2026-10-03): the hideout trophy count and the pity meter.
+		profile.Meta = profile.Meta or {}
+		if type(profile.Meta.CaptainKills) ~= "number" then
+			profile.Meta.CaptainKills = 0
+		end
+		if type(profile.Meta.LuckCharge) ~= "number" then
+			profile.Meta.LuckCharge = 0
+		end
+		profile.Version = 2
+		print("[PlayerData] Migrated a profile from schema 1 to 2")
+	end
 	if profile.Version > GameConfig.Data.SchemaVersion then
 		warn("[PlayerData] Profile from a NEWER schema; refusing to downgrade. Using read-only copy.")
 	end
