@@ -181,21 +181,29 @@ local GameConfig = {
 		RunThreshold = 13, -- studs/s: at or above this it runs instead of walks
 		WalkReferenceSpeed = 16, -- clip playback speed = actual speed / this
 		UpdateInterval = 0.15, -- seconds between locomotion updates (not every frame: §46)
-		-- Procedural enemy attack poses, used while AnimationConfig has no Attack clip. The
-		-- windup's length comes from EnemyConfig.WindupTime; these shape it.
-		EnemyDrawTime = 0.3, -- the snap into the draw-back; it then creeps deeper until release
-		EnemyStrikeTime = 0.08, -- the fast arc through the strike
-		EnemyImpactHold = 0.12, -- the arm holds at the end of the strike before recovering
-		EnemyRecoverShare = 0.85, -- share of RecoveryTime spent returning to rest (slowly)
+		-- Idle variation: each enemy's idle clip runs at 1 ± this speed, from a random
+		-- start, so a room of guards doesn't breathe in unison (C4).
+		IdleSpeedJitter = 0.12,
+		-- Procedural breathing for a rig with no idle clip (a static idle reads as frozen).
+		BreathDegrees = 1.5,
+		BreathPeriod = 3.2,
+		-- Procedural enemy attacks (PoseAnimator moves, used while AnimationConfig has no
+		-- Attack clip). The wind-up fills EnemyConfig.WindupTime minus StrikeLead; the strike
+		-- arc starts StrikeLead before the server's hit test so the blade ARRIVES as damage
+		-- applies, then holds ImpactHold; recovery fills RecoverShare of RecoveryTime.
+		StrikeLead = 0.1,
+		ImpactHold = 0.12,
+		RecoverShare = 0.85,
+		-- How long a cancelled or interrupted pose takes to ease back to rest.
+		RelaxTime = 0.25,
+		-- Player light combo: a swing within this many seconds of the last continues the
+		-- chain (stage 1 → 2 → 3); any longer and it restarts at 1. Client-visual for now; the
+		-- server mirrors it when combo damage lands (E3).
+		ComboWindow = 1.1,
 	},
 
 	-- ── Feel (client): procedural animation, all TweenService ───
 	Feel = {
-		-- Player weapon swing, in phases. Total stays under the fastest weapon cooldown (0.6s).
-		SwingWindUp = 0.1,
-		SwingStrike = 0.07,
-		SwingFollowThrough = 0.1,
-		SwingRecover = 0.2,
 		-- Hit-stop: everything local freezes for a beat when a blow lands.
 		HitStopTime = 0.06, -- your hit lands
 		HeavyHitStopTime = 0.14, -- a kill, or taking a heavy blow

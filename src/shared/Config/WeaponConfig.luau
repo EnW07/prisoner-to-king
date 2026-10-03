@@ -8,6 +8,9 @@ export type Weapon = {
 	Damage: number,
 	AttackCooldown: number,
 	WeaponClass: string,
+	-- Animation weight class (AnimationConfig.Weights): how slowly it winds up and recovers
+	-- and how much the body joins the swing. A hammer and a dagger must not share timing.
+	Weight: string,
 	SellValue: number,
 	Special: string?,
 	-- Graybox visual: box welded to the hand until real art exists.
@@ -21,6 +24,7 @@ local WeaponConfig: { [string]: Weapon } = {
 		Damage = 5,
 		AttackCooldown = 0.65,
 		WeaponClass = "Unarmed",
+		Weight = "Light",
 		SellValue = 0,
 		Special = nil,
 		Model = {
@@ -36,6 +40,7 @@ local WeaponConfig: { [string]: Weapon } = {
 		Damage = 7,
 		AttackCooldown = 0.60,
 		WeaponClass = "Dagger",
+		Weight = "Light",
 		SellValue = 5,
 		Special = nil,
 		Model = {
@@ -51,6 +56,7 @@ local WeaponConfig: { [string]: Weapon } = {
 		Damage = 12,
 		AttackCooldown = 0.70,
 		WeaponClass = "Sword",
+		Weight = "Medium",
 		SellValue = 30,
 		Special = nil,
 		Model = {
@@ -68,6 +74,7 @@ local WeaponConfig: { [string]: Weapon } = {
 		Damage = 18,
 		AttackCooldown = 0.72,
 		WeaponClass = "Sword",
+		Weight = "Medium",
 		SellValue = 80, -- placeholder: selling doesn't exist yet
 		Special = nil,
 		Model = {
