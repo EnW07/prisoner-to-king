@@ -41,6 +41,7 @@ local grid: Frame
 
 local owned: { string } = {}
 local equipped: string? = nil
+local bonus = 0 -- weapon-upgrade bonus: applies to whichever weapon is equipped
 local isOpen = false
 
 -- Weapons worth showing (fists aren't an item), strongest first.
@@ -91,7 +92,8 @@ local function buildSlot(id: string, order: number)
 	local stats = UIStyle.Text(
 		"Stats",
 		content,
-		("%d DMG · %s"):format(weapon.Damage, weapon.Rarity:upper()),
+		-- What this weapon WOULD do if equipped: its own damage plus your upgrade bonus.
+		("%s · %s"):format(UIStyle.Damage(weapon.Damage, bonus), weapon.Rarity:upper()),
 		UDim2.fromScale(1, 0.12),
 		nil,
 		20
@@ -254,9 +256,12 @@ function InventoryController.Init()
 	UIController.WeaponSlotTapped.Event:Connect(open)
 
 	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)
-		local changed = state.WeaponId ~= equipped or #(state.OwnedWeapons or {}) ~= #owned
+		local changed = state.WeaponId ~= equipped
+			or #(state.OwnedWeapons or {}) ~= #owned
+			or (state.DamageBonus or 0) ~= bonus
 		owned = state.OwnedWeapons or owned
 		equipped = state.WeaponId
+		bonus = state.DamageBonus or 0
 		if isOpen and changed then
 			rebuild()
 		end

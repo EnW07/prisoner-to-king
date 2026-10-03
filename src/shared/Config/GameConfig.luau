@@ -185,6 +185,7 @@ local GameConfig = {
 		-- windup's length comes from EnemyConfig.WindupTime; these shape it.
 		EnemyDrawTime = 0.3, -- the snap into the draw-back; it then creeps deeper until release
 		EnemyStrikeTime = 0.08, -- the fast arc through the strike
+		EnemyImpactHold = 0.12, -- the arm holds at the end of the strike before recovering
 		EnemyRecoverShare = 0.85, -- share of RecoveryTime spent returning to rest (slowly)
 	},
 

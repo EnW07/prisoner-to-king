@@ -49,15 +49,23 @@ function EconomyService.TrySpendGold(player: Player, amount: number, reason: str
 end
 
 -- Total damage of the equipped weapon including the permanent weapon-upgrade bonus.
+-- The flat bonus from weapon upgrades. It applies to whatever weapon is equipped.
+function EconomyService.GetDamageBonus(player: Player): number
+	local profile = ctx.Data.Get(player)
+	if not profile then
+		return 0
+	end
+	return (profile.Castle.WeaponRackLevel or 0)
+		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponUpgradeDamageBonus
+end
+
 function EconomyService.GetPlayerDamage(player: Player): number
 	local profile = ctx.Data.Get(player)
 	if not profile then
 		return 5
 	end
 	local weapon = WeaponConfig.Get(profile.Equipped.WeaponId) or WeaponConfig.Get("fists")
-	local bonus = (profile.Castle.WeaponRackLevel or 0)
-		* require(game.ReplicatedStorage.Shared.Config.GameConfig).Economy.WeaponUpgradeDamageBonus
-	return (weapon :: any).Damage + bonus
+	return (weapon :: any).Damage + EconomyService.GetDamageBonus(player)
 end
 
 function EconomyService.PushState(player: Player)
@@ -75,7 +83,10 @@ function EconomyService.PushState(player: Player)
 		Weapon = weapon and weapon.Name or "Fists",
 		WeaponId = profile.Equipped.WeaponId, -- for the HUD's 3D weapon icon
 		OwnedWeapons = table.clone(profile.Inventory.Weapons), -- the inventory grid (a copy)
-		WeaponDamage = EconomyService.GetPlayerDamage(player),
+		WeaponDamage = EconomyService.GetPlayerDamage(player), -- total: base + bonus
+		-- The upgrade bonus on its own, so every screen can show "base +bonus" and agree
+		-- (playtest 5: the HUD showed 28 where the inventory showed 18).
+		DamageBonus = EconomyService.GetDamageBonus(player),
 		Objective = run and run.Objective or "",
 		RunState = run and run.State or "Safe",
 		WeaponUpgradeLevel = profile.Castle.WeaponRackLevel or 0,
