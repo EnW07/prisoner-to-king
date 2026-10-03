@@ -142,6 +142,19 @@ local GameConfig = {
 		InventoryCellWidth = 0.3,
 		InventoryCellHeight = 0.46,
 		RarityGradientDarken = 0.55,
+		-- Loot reveal (§81: presentation scales with value). Seconds on screen per rarity.
+		-- A tap ends it early, so the player is never trapped in it.
+		RevealHold = {
+			Common = 1.3,
+			Uncommon = 1.8,
+			Rare = 2.8,
+			Epic = 3.2,
+			Legendary = 3.6,
+			Mythic = 4,
+		},
+		RevealInTime = 0.35,
+		RevealFlyTime = 0.4, -- into the weapon slot
+		RevealFlyScale = 0.25,
 		PopTime = 0.18, -- small "something changed" scale bounce
 		PopScale = 1.12,
 		PressScale = 0.9, -- touch button squash on press
