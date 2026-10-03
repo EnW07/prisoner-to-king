@@ -220,6 +220,53 @@ function RunStateService.TakeSecret(player: Player, id: string): boolean
 	return true
 end
 
+-- The world position of the current objective, for the HUD arrow (J2). Each objective
+-- string maps to a thing in the world; STEAL THE KEY points at the nearest living guard.
+function RunStateService.ObjectiveTarget(player: Player): Vector3?
+	local run = runs[player.UserId]
+	local world = ctx.World
+	if not run or not world then
+		return nil
+	end
+	local function at(part: BasePart?): Vector3?
+		return if part then part.Position else nil
+	end
+	local o = run.Objective
+	if o == "BREAK YOUR CHAINS" then
+		return at(world.Chain)
+	elseif o == "GRAB A WEAPON" then
+		return at(world.WeaponPlank)
+	elseif o == "STEAL THE KEY" then
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local best: Vector3? = nil
+		local bestDistance = math.huge
+		if root and root:IsA("BasePart") and ctx.EnemyService then
+			for model, record in ctx.EnemyService.GetActive() do
+				local enemyRoot = model.PrimaryPart
+				if enemyRoot and not record.Config.Boss and record.State ~= "Dead" then
+					local d = (enemyRoot.Position - root.Position).Magnitude
+					if d < bestDistance then
+						best, bestDistance = enemyRoot.Position, d
+					end
+				end
+			end
+		end
+		return best or world.PatrolGuardSpawn.Position
+	elseif o == "UNLOCK THE CELLBLOCK" then
+		return at(world.LockedDoor)
+	elseif o == "TAKE THE SWORD" then
+		return at(world.Chest)
+	elseif o == "RUN! ESCAPE WITH YOUR LOOT" then
+		return at(if run.PosternOpened then world.PosternPad else world.ExtractionPad)
+	elseif o == "UPGRADE YOUR WEAPONS" then
+		return at(world.UpgradePad)
+	elseif o == "THE CAPTAIN HAS BETTER GEAR" then
+		return at(world.ReenterPad)
+	end
+	return nil
+end
+
 function RunStateService.GivePosternKey(player: Player)
 	local run = runs[player.UserId]
 	if not run or run.HasPosternKey then

@@ -110,8 +110,9 @@ local function buildRig(enemyId: string, cfg, cframe: CFrame): (Model, Humanoid)
 	humanoid.WalkSpeed = if cfg.Static then 0 else cfg.MoveSpeed
 	humanoid.BreakJointsOnDeath = false
 	humanoid.DisplayName = cfg.DisplayName
-	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
-	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+	-- No stock bar or nameplate: EnemyBarController draws a styled one on the first hit (J2).
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	RigFactory.PlaceOnFloor(model, cframe)
 	return model, humanoid
 end
