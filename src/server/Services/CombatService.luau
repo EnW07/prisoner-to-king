@@ -195,8 +195,8 @@ function CombatService.EquipVisual(player: Player)
 	model:PivotTo(hand.CFrame * gripOffset)
 	model.Parent = character
 
-	-- A Weld (not a WeldConstraint) named "Grip", so the client can tween its C0 for a
-	-- wrist snap on rigs where it can't swing the arm (R6). See CombatController.
+	-- A Weld named "Grip" holds the weapon in the hand. The swing moves the ARM
+	-- (CombatController via ArmPose); the grip itself never animates.
 	local grip = Instance.new("Weld")
 	grip.Name = "Grip"
 	grip.Part0 = hand

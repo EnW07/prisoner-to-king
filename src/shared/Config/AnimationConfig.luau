@@ -36,7 +36,9 @@ AnimationConfig.Sets = {
 		Run = DEFAULT,
 		Jump = DEFAULT,
 		Fall = DEFAULT,
-		Attack = nil, -- nil: procedural arm swing (EnemyAnimator)
+		-- nil: procedural draw-back / strike / recover through the shoulder (EnemyAnimator).
+		-- A clip starts at the windup and should land its hit at the enemy's WindupTime.
+		Attack = nil,
 	},
 	Captain = {
 		Idle = DEFAULT,

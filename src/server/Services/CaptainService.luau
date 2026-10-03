@@ -23,6 +23,7 @@ local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
+local ArmPose = require(game.ReplicatedStorage.Shared.ArmPose)
 local EnemyAnimator = require(script.Parent.EnemyAnimator)
 
 local CaptainService = {}
@@ -68,8 +69,7 @@ local SWING_TWEEN = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirect
 -- a failed dress used to leave an inert, killable husk with no health bar and no respawn).
 type Fight = {
 	Record: any,
-	Shoulder: Motor6D?,
-	ShoulderRest: CFrame?,
+	Arm: ArmPose.Joint?, -- right shoulder (Motor6D or AnimationConstraint form)
 	Sword: BasePart?,
 	Highlight: Highlight?,
 	Busy: boolean,
@@ -170,7 +170,7 @@ end
 -- Silhouette: an R15 rig scaled from EnemyConfig (RigFactory), so he is genuinely taller,
 -- broader and bulkier than any guard. Dressed with pauldrons, a crested helm and an oversized
 -- greatsword held in his hand. Readable as a black shape (art §8 priority 1).
-local function dress(record): (Motor6D, CFrame, BasePart?, Highlight)
+local function dress(record): (ArmPose.Joint?, BasePart?, Highlight)
 	local model: Model = record.Model
 	local head = model:FindFirstChild("Head") :: BasePart
 
@@ -216,12 +216,16 @@ local function dress(record): (Motor6D, CFrame, BasePart?, Highlight)
 		Enum.Material.Metal
 	) :: BasePart
 
-	-- His attacks move the real arm. The shoulder's rest C0 is captured once, and every pose
-	-- is relative to it, so the rig's own scale and proportions are preserved.
-	local shoulder = model:FindFirstChild("RightShoulder", true) :: Motor6D
-	assert(shoulder and shoulder:IsA("Motor6D"), "Captain Bronn's rig has no RightShoulder joint")
-	local rest = shoulder.C0
-	shoulder.C0 = rest * POSES.Rest
+	-- His attacks move the real arm. The shoulder's rest offset is captured once, and every
+	-- pose is relative to it, so the rig's scale and proportions are kept. (This used to
+	-- assert a Motor6D; on rigs whose joints are AnimationConstraints that assert threw and
+	-- broke his whole spawn. Playtest 5.)
+	local arm = ArmPose.Find(model)
+	if arm then
+		ArmPose.Set(arm, POSES.Rest)
+	else
+		warn("[Captain] Bronn has no right shoulder joint; his attacks won't move his arm")
+	end
 
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
@@ -233,12 +237,12 @@ local function dress(record): (Motor6D, CFrame, BasePart?, Highlight)
 	highlight.Enabled = false
 	highlight.Parent = model
 
-	return shoulder, rest, sword, highlight
+	return arm, sword, highlight
 end
 
 local function setPose(f: Fight, pose: string, info: TweenInfo)
-	if f.Shoulder and f.ShoulderRest then
-		TweenService:Create(f.Shoulder, info, { C0 = f.ShoulderRest * POSES[pose] }):Play()
+	if f.Arm then
+		ArmPose.TweenTo(f.Arm, POSES[pose], info)
 	end
 end
 
@@ -386,12 +390,12 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	local creepTime = attack.WindUp - POSE_TWEEN.Time
 	if not clip and creepTime > 0 then
 		task.delay(POSE_TWEEN.Time, function()
-			if alive(f) and f.Busy and f.Shoulder and f.ShoulderRest then
-				TweenService:Create(
-					f.Shoulder,
-					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-					{ C0 = f.ShoulderRest * CREEP[attack.Pose] * POSES[attack.Pose] }
-				):Play()
+			if alive(f) and f.Busy and f.Arm then
+				ArmPose.TweenTo(
+					f.Arm,
+					CREEP[attack.Pose] * POSES[attack.Pose],
+					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+				)
 			end
 		end)
 	end
@@ -403,9 +407,8 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
 		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
-		if not clip and f.Shoulder and f.ShoulderRest then
-			TweenService:Create(f.Shoulder, SWING_TWEEN, { C0 = f.ShoulderRest * IMPACTS[attack.Pose] })
-				:Play()
+		if not clip and f.Arm then
+			ArmPose.TweenTo(f.Arm, IMPACTS[attack.Pose], SWING_TWEEN)
 		end
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
@@ -541,7 +544,18 @@ local function think(record, _dt: number)
 			return
 		end
 	end
-	record.Humanoid:MoveTo(target.Position)
+	-- Close to his stand-off ring, never into the player (playtest 5). Inside it he plants
+	-- and turns to face you between attacks, and steps back if crowded.
+	local root = record.Model.PrimaryPart :: BasePart
+	local standoff = cfg.StandoffDistance or cfg.AttackRange
+	local away = Vector3.new(root.Position.X - target.Position.X, 0, root.Position.Z - target.Position.Z)
+	local awayDir = if away.Magnitude > 0.05 then away.Unit else -root.CFrame.LookVector
+	if best > standoff or best < standoff - GameConfig.Enemy.StandoffSlack then
+		record.Humanoid:MoveTo(target.Position + awayDir * standoff)
+	else
+		record.Humanoid:MoveTo(root.Position)
+		root.CFrame = facing(root.Position, target.Position)
+	end
 end
 
 -- ── EnemyService hooks ──────────────────────────────────────────
@@ -668,18 +682,15 @@ function CaptainService.Spawn()
 
 	-- Dressing is presentation. If it fails, say exactly why and fight anyway: a Bronn who
 	-- can't be dressed must still move, attack and die properly.
-	local ok, shoulder, shoulderRest, sword, highlight = xpcall(dress, debug.traceback, record)
+	local ok, arm, sword, highlight = xpcall(dress, debug.traceback, record)
 	if not ok then
-		warn("[Captain] Dressing Bronn failed; fighting without costume:\n" .. tostring(shoulder))
-		local joint = model:FindFirstChild("RightShoulder", true)
-		shoulder = if joint and joint:IsA("Motor6D") then joint else nil
-		shoulderRest = if shoulder then shoulder.C0 else nil
+		warn("[Captain] Dressing Bronn failed; fighting without costume:\n" .. tostring(arm))
+		arm = ArmPose.Find(model)
 		sword, highlight = nil, nil
 	end
 	local f: Fight = {
 		Record = record,
-		Shoulder = shoulder,
-		ShoulderRest = shoulderRest,
+		Arm = arm,
 		Sword = sword,
 		Highlight = highlight,
 		Busy = false,

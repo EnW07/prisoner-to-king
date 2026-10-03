@@ -28,7 +28,16 @@ export type Enemy = {
 	MoveSpeed: number,
 	AggroRange: number,
 	AttackRange: number,
+	-- Minimum time from the START of one attack to the start of the next.
 	AttackCooldown: number,
+	-- The attack cycle (playtest 5): Chase → hold at StandoffDistance → committed Windup (no
+	-- turning, so it can be dodged) → one Strike at the end of the windup → Recovery, the
+	-- punish window. StandoffDistance must be under AttackRange so the strike connects.
+	-- Bosses with a moveset use their own per-attack timings; they only need the stand-off.
+	StandoffDistance: number?,
+	WindupTime: number?,
+	RecoveryTime: number?,
+	AttackName: string?, -- shown on the CAPTURED screen when this attack kills you
 	GoldMin: number,
 	GoldMax: number,
 	LootTable: string,
@@ -56,6 +65,11 @@ local EnemyConfig: { [string]: Enemy } = {
 		AggroRange = 30,
 		AttackRange = 6,
 		AttackCooldown = 1.6,
+		-- Deliberately slow and readable: he's the tutorial's first fight (§116).
+		StandoffDistance = 4.5,
+		WindupTime = 1.0,
+		RecoveryTime = 1.2,
+		AttackName = "SWORD CHOP",
 		GoldMin = 8,
 		GoldMax = 15,
 		LootTable = "sleepy_guard",
@@ -73,6 +87,11 @@ local EnemyConfig: { [string]: Enemy } = {
 		AggroRange = 55,
 		AttackRange = 6,
 		AttackCooldown = 1.3,
+		-- Quicker than the sleepy guard, still generous: the alarm is pressure, not a wall.
+		StandoffDistance = 4.5,
+		WindupTime = 0.8,
+		RecoveryTime = 0.9,
+		AttackName = "SPEAR STRIKE",
 		GoldMin = 10,
 		GoldMax = 18,
 		LootTable = "alarm_guard",
@@ -93,6 +112,7 @@ local EnemyConfig: { [string]: Enemy } = {
 		AggroRange = 60,
 		AttackRange = 7,
 		AttackCooldown = 0.5, -- gap between one attack's recovery and the next wind-up
+		StandoffDistance = 5.5, -- he holds here instead of walking into you
 		GoldMin = 40,
 		GoldMax = 60,
 		LootTable = "captain_bronn",

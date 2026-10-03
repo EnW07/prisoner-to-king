@@ -21,6 +21,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
+local ArmPose = require(game.ReplicatedStorage.Shared.ArmPose)
 
 local RigFactory = {}
 
@@ -93,9 +94,9 @@ end
 
 -- Rotate a joint's rest pose. Used for posture (a slouch is a bent waist, not a prop).
 local function bend(model: Model, jointName: string, rotation: CFrame)
-	local joint = model:FindFirstChild(jointName, true)
-	if joint and joint:IsA("Motor6D") then
-		joint.C0 = joint.C0 * rotation
+	local joint = ArmPose.FindJoint(model, jointName, "R15") -- Motor6D or AnimationConstraint
+	if joint then
+		ArmPose.Set(joint, rotation)
 	end
 end
 

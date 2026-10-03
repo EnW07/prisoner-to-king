@@ -19,6 +19,7 @@ local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfi
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 local HitStop = require(script.Parent:WaitForChild("HitStop"))
 local AnimationConfig = require(Shared:WaitForChild("Config"):WaitForChild("AnimationConfig"))
+local ArmPose = require(Shared:WaitForChild("ArmPose"))
 
 local player = Players.LocalPlayer
 local CombatController = {}
@@ -27,59 +28,50 @@ local AttackRequest: RemoteEvent
 local localCooldownUntil = 0
 local currentCooldown = 0.65
 
--- ── Procedural swing (VISUAL_OVERHAUL_PLAN Phase 2, item 7) ──
--- Four phases tweened on the shoulder joint: wind-up, strike, follow-through, recover. No
--- imported animation. R15 swings the whole arm through RightShoulder.C0, which composes with
--- whatever the Animator is playing. Other rigs (R6) get a wrist snap on the weapon's Grip
--- weld instead. Local and cosmetic: other players don't see it, and the server never reads it.
---
--- Rotations relative to the rest pose. Positive X raises the arm forward and up.
-local ARM = {
-	WindUp = CFrame.Angles(math.rad(150), 0, math.rad(-25)), -- up and back over the shoulder
-	Strike = CFrame.Angles(math.rad(25), 0, math.rad(20)), -- down and across in front
-	FollowThrough = CFrame.Angles(math.rad(-25), 0, math.rad(30)), -- carried on past
-}
-local WRIST = {
-	WindUp = CFrame.Angles(math.rad(70), 0, 0),
-	Strike = CFrame.Angles(math.rad(-80), 0, 0),
-	FollowThrough = CFrame.Angles(math.rad(-110), 0, 0),
-}
-local restC0: { [Instance]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
+-- ── Procedural swing (playtest 5, item 2) ──
+-- Four phases through the real right shoulder: wind-up, strike, follow-through, recover.
+-- The ARM swings, carrying the weapon in the hand. Nothing rotates the weapon on its own.
+-- ArmPose finds the joint on R15 or R6, in Motor6D or AnimationConstraint form. The old
+-- version only knew the R15 Motor6D, and otherwise fell back to a wrist snap on the
+-- weapon: "the weapon moves and the arm doesn't". Local and cosmetic: the server never
+-- reads it.
+local arms: { [Instance]: ArmPose.Joint | false } = setmetatable({}, { __mode = "k" }) :: any
 local swingToken = 0
 
--- Plays a list of C0 targets one after another. A newer swing (new token) or a cancelled
--- tween stops the chain; hit-stop pauses it (HitStop.Track) and it resumes in place.
-local function chain(joint: Instance, steps: { { any } }, token: number)
+-- The character's shoulder, found once per character so its rest pose is the real rest.
+local function armFor(character: Model): ArmPose.Joint?
+	local cached = arms[character]
+	if cached == nil then
+		local found = ArmPose.Find(character)
+		if not found then
+			warn("[CombatController] No right shoulder joint on this character; the swing can't move the arm")
+		end
+		arms[character] = found or false
+		return found
+	end
+	return cached or nil
+end
+
+-- Plays poses one after another. A newer swing (new token) or a cancelled tween stops the
+-- chain; hit-stop pauses it (HitStop.Track) and it resumes in place.
+local function chain(arm: ArmPose.Joint, steps: { { any } }, token: number)
 	local i = 0
 	local function nextStep()
 		i += 1
-		if token ~= swingToken or i > #steps or not joint.Parent then
+		if token ~= swingToken or i > #steps or not arm.Target.Parent then
 			return
 		end
 		local step = steps[i]
-		local t = TweenService:Create(joint, TweenInfo.new(step[2], step[3], step[4]), { C0 = step[1] })
+		local t =
+			ArmPose.TweenTo(arm, ArmPose.Rotation(arm.Rig, step[1]), TweenInfo.new(step[2], step[3], step[4]))
 		HitStop.Track(t)
 		t.Completed:Connect(function(state)
 			if state == Enum.PlaybackState.Completed then
 				nextStep()
 			end
 		end)
-		t:Play()
 	end
 	nextStep()
-end
-
-local function swingJoint(joint: Instance, poses, token: number)
-	local rest = restC0[joint] or (joint :: any).C0
-	restC0[joint] = rest
-	local feel = GameConfig.Feel
-	local Quad = Enum.EasingStyle.Quad
-	chain(joint, {
-		{ rest * poses.WindUp, feel.SwingWindUp, Quad, Enum.EasingDirection.Out },
-		{ rest * poses.Strike, feel.SwingStrike, Quad, Enum.EasingDirection.In },
-		{ rest * poses.FollowThrough, feel.SwingFollowThrough, Quad, Enum.EasingDirection.Out },
-		{ rest, feel.SwingRecover, Quad, Enum.EasingDirection.InOut },
-	}, token)
 end
 
 -- A configured swing clip (AnimationConfig.Player.Swing), loaded once per Animator.
@@ -136,18 +128,19 @@ local function playSwing()
 		return
 	end
 
-	local upperArm = character:FindFirstChild("RightUpperArm")
-	local shoulder = upperArm and upperArm:FindFirstChild("RightShoulder")
-	if shoulder and shoulder:IsA("Motor6D") then
-		swingJoint(shoulder, ARM, token)
+	local arm = armFor(character)
+	if not arm then
 		return
 	end
-
-	local weapon = character:FindFirstChild("EquippedWeapon")
-	local grip = weapon and weapon:FindFirstChild("Grip", true) -- on the weapon model's blade
-	if grip and grip:IsA("Weld") then
-		swingJoint(grip, WRIST, token)
-	end
+	local feel = GameConfig.Feel
+	local Q = Enum.EasingStyle.Quad
+	local Chop = ArmPose.Chop
+	chain(arm, {
+		{ Chop.WindUp, feel.SwingWindUp, Q, Enum.EasingDirection.Out },
+		{ Chop.Strike, feel.SwingStrike, Q, Enum.EasingDirection.In },
+		{ Chop.FollowThrough, feel.SwingFollowThrough, Q, Enum.EasingDirection.Out },
+		{ Chop.Rest, feel.SwingRecover, Q, Enum.EasingDirection.InOut },
+	}, token)
 end
 
 local function onAttack(_actionName: string, inputState: Enum.UserInputState)
