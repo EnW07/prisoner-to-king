@@ -104,6 +104,7 @@ AnimationConfig.Sets = {
 		Cleave = nil,
 		CrushingBlow = nil,
 		Charge = nil,
+		FlameSweep = nil,
 		Roar = nil,
 		Stagger = nil,
 		Flinch = nil,
@@ -111,6 +112,7 @@ AnimationConfig.Sets = {
 			Cleave = "BronnCleave",
 			CrushingBlow = "BronnCrush",
 			Charge = "BronnCharge",
+			FlameSweep = "BronnSweep",
 			Roar = "BronnRoar",
 			Stagger = "Stagger",
 			Flinch = "Flinch",
@@ -903,6 +905,52 @@ AnimationConfig.Poses = {
 		RightHip = { x = 20 },
 		LeftHip = { x = -20 },
 	},
+	-- FLAME SWEEP (phase two): the sword drawn low behind, then a full turn through three
+	-- mid poses (each under 180 degrees, so the rotation goes the long way round), ending
+	-- facing front with the blade out wide.
+	BronnSweepWind = {
+		RightShoulder = { x = -25, y = -30, z = 70 },
+		RightElbow = { x = 20 },
+		LeftShoulder = { x = 30, z = 20 },
+		Waist = { x = 8, y = -50 },
+		Neck = { y = 40 },
+		Root = { y = -40, P = { 0, -0.2, 0 } },
+		RightHip = { x = 15 },
+		LeftHip = { x = 15 },
+		RightKnee = { x = -25 },
+		LeftKnee = { x = -25 },
+	},
+	BronnSweepMid1 = {
+		RightShoulder = { x = 0, y = 0, z = 90 },
+		LeftShoulder = { x = 0, z = 60 },
+		Waist = { x = 4, y = -20 },
+		Root = { y = 90, P = { 0, -0.15, 0 } },
+	},
+	BronnSweepMid2 = {
+		RightShoulder = { x = 0, y = 0, z = 92 },
+		LeftShoulder = { x = 0, z = 60 },
+		Waist = { x = 4, y = 10 },
+		Root = { y = 230, P = { 0, -0.15, 0 } },
+	},
+	BronnSweepHit = {
+		RightShoulder = { x = 5, y = 20, z = 88 },
+		LeftShoulder = { x = -10, z = 40 },
+		Waist = { x = 10, y = 30 },
+		Neck = { y = -20 },
+		Root = { y = 330, P = { 0, -0.2, 0 } },
+		RightHip = { x = 15 },
+		LeftHip = { x = 15 },
+		RightKnee = { x = -25 },
+		LeftKnee = { x = -25 },
+	},
+	BronnSweepThrough = {
+		RightShoulder = { x = 0, y = 35, z = 80 },
+		LeftShoulder = { x = -15, z = 35 },
+		Waist = { x = 12, y = 36 },
+		Neck = { y = -24 },
+		Root = { y = 350, P = { 0, -0.18, 0 } },
+	},
+
 	-- ROAR (phase transition): arms thrown wide and up, chest out, head back.
 	RoarUp = {
 		RightShoulder = { x = 160, z = 45 },
@@ -1147,6 +1195,19 @@ AnimationConfig.Moves = {
 			{ Pose = "RoarHold", Time = 0.5, Style = "Sine", Dir = "InOut", Hold = 0.4 },
 		},
 		Recover = { { Pose = "Rest", Time = 0.45, Style = "Sine", Dir = "InOut" } },
+	},
+	BronnSweep = {
+		Wind = {
+			{ Pose = "BronnSweepWind", Time = 0.35, Style = "Back", Dir = "Out", Delay = ARM_LAG },
+			{ Pose = "BronnSweepWind", Time = 0.65, Style = "Sine", Dir = "InOut" },
+		},
+		Strike = {
+			{ Pose = "BronnSweepMid1", Time = 0.07, Style = "Quad", Dir = "In" },
+			{ Pose = "BronnSweepMid2", Time = 0.07, Style = "Linear", Dir = "In" },
+			{ Pose = "BronnSweepHit", Time = 0.06, Style = "Quad", Dir = "Out" },
+			{ Pose = "BronnSweepThrough", Time = 0.12, Style = "Back", Dir = "Out", Hold = 0.15 },
+		},
+		Recover = { { Pose = "Rest", Time = 1, Style = "Sine", Dir = "InOut", Delay = ARM_LAST } },
 	},
 }
 

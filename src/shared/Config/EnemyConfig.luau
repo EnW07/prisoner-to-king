@@ -76,6 +76,10 @@ export type Enemy = {
 	Attacks: { [string]: Attack }?,
 	Rotation: { string }?,
 	RangedAttack: string?,
+	-- Boss-only (G1): at AtHealth of MaxHealth he transitions once: roars, calls his
+	-- reinforcement, his attacks run at TimeScale of their timings, and the rotation
+	-- changes (usually gaining a move).
+	PhaseTwo: { AtHealth: number, Rotation: { string }, TimeScale: number }?,
 }
 
 local EnemyConfig: { [string]: Enemy } = {
@@ -325,9 +329,25 @@ local EnemyConfig: { [string]: Enemy } = {
 				Width = 6,
 				Length = 26,
 			},
+			-- Phase two only: a full circle around him. The answer is distance, not a side
+			-- step. (The sword is lit by then; the spin sells it.)
+			FlameSweep = {
+				Name = "FLAME SWEEP",
+				Shape = "Circle",
+				DamageMultiplier = 1.3, -- 23
+				WindUp = 1.1,
+				Recovery = 1.1,
+				Radius = 9,
+				Offset = 0,
+			},
 		},
 		Rotation = { "Cleave", "Cleave", "CrushingBlow" },
 		RangedAttack = "Charge",
+		PhaseTwo = {
+			AtHealth = 0.5,
+			Rotation = { "Cleave", "CrushingBlow", "FlameSweep", "Cleave" },
+			TimeScale = 0.82, -- modestly faster: readable, not a different fight
+		},
 	},
 }
 

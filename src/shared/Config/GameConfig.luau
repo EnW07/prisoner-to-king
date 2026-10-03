@@ -186,8 +186,16 @@ local GameConfig = {
 		-- With no player left in his hall for this long, he walks home and heals to full.
 		-- Stops step-in / hit / step-out cheese.
 		ResetDelay = 4,
-		ReinforcementAtHealth = 0.5, -- fraction of MaxHealth; one call per fight
+		-- The phase transition (G1) happens at EnemyConfig.captain_bronn.PhaseTwo.AtHealth.
+		-- He roars for this long, invulnerable, while a reinforcement arrives.
 		ReinforcementEnemy = "alarm_guard",
+		PhaseRoarTime = 1.7,
+		-- Boss death (G3): the frame of the final blow holds this long before the body goes
+		-- and the reward drops. The client stretches its hit-stop to match.
+		DeathHold = 1.4,
+		-- Client: the phase transition's screen flash and camera push.
+		PhaseFlashTime = 0.45,
+		PhaseKick = 4,
 		ChargeSpeed = 48, -- studs/s during the dash
 		-- He only charges a target at least this far away, so it punishes kiting rather than
 		-- every step back from a Cleave.

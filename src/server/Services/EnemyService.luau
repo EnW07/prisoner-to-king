@@ -774,6 +774,18 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 		else root.Position
 	local now = os.clock()
 
+	-- A boss mid-transition (G1) takes nothing: sparks, no number, no reaction.
+	if record.Invulnerable then
+		HitConfirm:FireAllClients({
+			Kind = "blocked",
+			Immune = true,
+			Position = hit.Contact or root.Position,
+			Attacker = attacker.UserId,
+			Target = model,
+		})
+		return true
+	end
+
 	-- Being hit is being found (F8): a short alert, then the fight, whatever the sightline.
 	if
 		not record.Options.Brain
@@ -907,20 +919,23 @@ function EnemyService.Kill(record, killer: Player?)
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- no bar on a corpse
 	humanoid.WalkSpeed = 0
 
+	-- A boss's final blow holds its frame for a beat before the body goes and the reward
+	-- drops (G3). Everyone else: the loot bursts out at once.
+	local hold = if cfg.Boss then GameConfig.Captain.DeathHold else GameConfig.Death.EnemyHold
 	if killer then
 		ctx.Analytics.Log(killer, "FirstGuardKilled", 1, { enemy = record.EnemyId })
 		ctx.Analytics.Log(killer, "EnemyKilled", 1, { enemy = record.EnemyId })
 		ctx.RunState.RecordKill(killer)
-		ctx.LootService.DropForEnemy(record.EnemyId, position, killer)
-	else
-		ctx.LootService.DropForEnemy(record.EnemyId, position, nil)
 	end
+	task.delay(if cfg.Boss then hold else 0, function()
+		ctx.LootService.DropForEnemy(record.EnemyId, position, killer)
+	end)
 
 	if record.Options.OnKilled then
 		record.Options.OnKilled(record, killer)
 	end
 
-	task.delay(GameConfig.Death.EnemyHold, function()
+	task.delay(hold, function()
 		if not model.Parent then
 			return
 		end
@@ -936,7 +951,7 @@ function EnemyService.Kill(record, killer: Player?)
 		end
 	end)
 
-	task.delay(GameConfig.Enemy.CorpseDespawn, function()
+	task.delay(GameConfig.Enemy.CorpseDespawn + (if cfg.Boss then hold else 0), function()
 		fadeOut(model)
 	end)
 

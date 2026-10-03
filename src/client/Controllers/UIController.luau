@@ -467,7 +467,7 @@ function UIController.OnNotify(data)
 	-- Colour carries meaning only: rarity on a weapon's name, `bleed` for danger and for
 	-- unsecured gold; everything else is the light neutral.
 	local rarityColor = data.Rarity and WeaponConfig.RarityColors[data.Rarity]
-	local danger = data.Kind == "alarm"
+	local danger = data.Kind == "alarm" or data.Kind == "bossIntro" or data.Kind == "bossPhase"
 	toastTitle.Text = data.Text
 	toastTitle.TextColor3 = rarityColor or ((danger or data.Kind == "gold") and Palette.bleed) or UIStyle.TEXT
 	toastSub.Text = data.Sub or ""

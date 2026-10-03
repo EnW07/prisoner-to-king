@@ -736,6 +736,23 @@ function WorldBuilder.Build()
 	local rack = box("WeaponRack", -8, 2, 388, 6, 4, 1, WOOD, props, Enum.Material.WoodPlanks)
 	rack.CanCollide = false
 
+	-- Trophy plinth (G3): Bronn's crested helm appears here for players who have killed him.
+	-- The plinth is always there; the helm is per-player visible (WorldFXController), since
+	-- the hideout is shared and the kill is yours.
+	box("TrophyPlinth", 0, 1, 418, 3, 2, 3, Palette.stone, props, Enum.Material.Slate)
+	local trophyHelm =
+		box("TrophyHelm", 0, 2.75, 418, 1.7, 1.3, 1.7, Palette.stone, props, Enum.Material.Metal)
+	decor(trophyHelm)
+	trophyHelm.Transparency = 1
+	trophyHelm:SetAttribute("Trophy", "captain")
+	CollectionService:AddTag(trophyHelm, "PTKTrophy")
+	local trophyCrest =
+		box("TrophyCrest", 0, 3.9, 418, 0.4, 1.1, 2.1, Palette.bleed, props, Enum.Material.SmoothPlastic)
+	decor(trophyCrest)
+	trophyCrest.Transparency = 1
+	trophyCrest:SetAttribute("Trophy", "captain")
+	CollectionService:AddTag(trophyCrest, "PTKTrophy")
+
 	local hideoutSpawn = box("HideoutSpawnMarker", 0, 0.1, 405, 4, 0.2, 4, Color3.fromRGB(95, 80, 65), zones)
 	hideoutSpawn.Transparency = 1
 	hideoutSpawn.CanCollide = false
