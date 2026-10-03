@@ -23,6 +23,7 @@ local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
+local EnemyAnimator = require(script.Parent.EnemyAnimator)
 
 local CaptainService = {}
 local ctx
@@ -410,7 +411,8 @@ local function charge(f: Fight, attack, destination: Vector3, damage: number)
 	hum:MoveTo(root.Position)
 end
 
-local function performAttack(f: Fight, attack, aim: Vector3)
+-- attackId is the EnemyConfig key (e.g. "CrushingBlow"), used to look up a clip.
+local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	local record = f.Record
 	local cfg = record.Config
 	local hum: Humanoid = record.Humanoid
@@ -434,9 +436,13 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 	local marker = makeMarker(f, attack, origin, reach)
 	setTelegraph(f, attack.Name)
 	-- 1. Anticipation: snap into the wind-up, then keep drawing back until the release.
-	setPose(f, attack.Pose, POSE_TWEEN)
+	-- An AnimationConfig clip for this move replaces the procedural arm poses entirely.
+	local clip = EnemyAnimator.PlayAction(record, attackId)
+	if not clip then
+		setPose(f, attack.Pose, POSE_TWEEN)
+	end
 	local creepTime = attack.WindUp - POSE_TWEEN.Time
-	if creepTime > 0 then
+	if not clip and creepTime > 0 then
 		task.delay(POSE_TWEEN.Time, function()
 			if alive(f) and f.Busy then
 				TweenService:Create(
@@ -455,7 +461,10 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
 		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
-		TweenService:Create(f.Shoulder, SWING_TWEEN, { C0 = f.ShoulderRest * IMPACTS[attack.Pose] }):Play()
+		if not clip then
+			TweenService:Create(f.Shoulder, SWING_TWEEN, { C0 = f.ShoulderRest * IMPACTS[attack.Pose] })
+				:Play()
+		end
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
 		else
@@ -470,7 +479,9 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 	end
 	-- 3. Recovery: a slow, heavy return to rest while he stands still. This is the
 	-- player's punish window. Timing is unchanged from before the animation pass.
-	setPose(f, "Rest", TweenInfo.new(attack.Recovery, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
+	if not clip then
+		setPose(f, "Rest", TweenInfo.new(attack.Recovery, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
+	end
 	task.wait(attack.Recovery)
 	if not alive(f) then
 		return
@@ -579,12 +590,12 @@ local function think(record, _dt: number)
 		if best <= cfg.AttackRange then
 			local name = cfg.Rotation[f.RotationIndex]
 			f.RotationIndex = f.RotationIndex % #cfg.Rotation + 1
-			task.spawn(performAttack, f, cfg.Attacks[name], target.Position)
+			task.spawn(performAttack, f, name, cfg.Attacks[name], target.Position)
 			return
 		end
 		local ranged = cfg.RangedAttack and cfg.Attacks[cfg.RangedAttack]
 		if ranged and best >= TUNE.ChargeMinRange and best <= ranged.Length then
-			task.spawn(performAttack, f, ranged, target.Position)
+			task.spawn(performAttack, f, cfg.RangedAttack, ranged, target.Position)
 			return
 		end
 	end

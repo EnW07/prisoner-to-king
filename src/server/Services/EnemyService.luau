@@ -10,6 +10,7 @@ local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local RigFactory = require(script.Parent.RigFactory)
+local EnemyAnimator = require(script.Parent.EnemyAnimator)
 
 local EnemyService = {}
 local ctx
@@ -28,6 +29,7 @@ function EnemyService.Init(context)
 	container.Parent = workspace
 
 	RigFactory.Prewarm(EnemyConfig)
+	EnemyAnimator.Init()
 
 	RunService.Heartbeat:Connect(function(dt)
 		accumulator += dt
@@ -109,6 +111,15 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 		Options = opts,
 	}
 	active[model] = record
+
+	-- Server owns enemy physics. Otherwise Roblox may hand a nearby player network
+	-- ownership, and that client could then move the enemy. It also keeps the locomotion
+	-- velocity EnemyAnimator reads authoritative.
+	local root = model.PrimaryPart
+	if root then
+		root:SetNetworkOwner(nil)
+	end
+	EnemyAnimator.Attach(record)
 	return record
 end
 
@@ -179,6 +190,7 @@ function EnemyService.Think(record, _dt: number)
 end
 
 function EnemyService.AttackPlayer(record, player: Player)
+	EnemyAnimator.Swing(record)
 	EnemyService.DamagePlayer(record, player, record.Config.Damage, "ATTACK")
 end
 
@@ -249,6 +261,7 @@ function EnemyService.Kill(record, killer: Player?)
 		return
 	end
 	record.State = "Dead"
+	EnemyAnimator.Detach(record)
 
 	local root = record.Model.PrimaryPart :: BasePart
 	local position = root.Position
@@ -298,6 +311,7 @@ function EnemyService.Despawn(record)
 	if active[model] then
 		active[model] = nil
 		record.State = "Dead"
+		EnemyAnimator.Detach(record)
 		model:Destroy()
 	end
 end
