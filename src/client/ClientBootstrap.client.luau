@@ -8,10 +8,12 @@ local UIController = require(Controllers.UIController)
 local CombatController = require(Controllers.CombatController)
 local FeedbackController = require(Controllers.FeedbackController)
 local PromptController = require(Controllers.PromptController)
+local PromptUIController = require(Controllers.PromptUIController)
 
 UIController.Init()
 CombatController.Init()
 FeedbackController.Init()
 PromptController.Init()
+PromptUIController.Init()
 
 print("[PRISONER TO KING] Client ready.")

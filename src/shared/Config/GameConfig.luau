@@ -87,6 +87,39 @@ local GameConfig = {
 		StrikeFlashTime = 0.15,
 	},
 
+	-- ── HUD / UI (client) ───────────────────────────────────────
+	-- Timings are seconds. Everything tweens; nothing snaps (VISUAL_OVERHAUL_PLAN Phase 1).
+	UI = {
+		-- Unsecured bar (art §6, the signature element).
+		UnsecuredBarFullAt = 300, -- unsecured gold that fills the bar; it stays full beyond
+		BarFillTime = 0.3,
+		PulseSlowPeriod = 1.4, -- pulse period with a nearly empty bar...
+		PulseFastPeriod = 0.3, -- ...and with a full one. The pulse IS the tension.
+		PulseDepth = 0.5, -- how far the fill fades at the bottom of each pulse
+		SecureSweepTime = 0.45, -- on ESCAPE: fill sweeps across and turns gold
+		SecureFlyTime = 0.4, -- then the amount flies into the Gold counter
+		GoldRollTime = 0.7, -- the Gold counter rolls up rather than snapping
+		-- Objective banner, toasts, full-screen moments, prompts.
+		ObjectiveSwapTime = 0.3,
+		ToastInTime = 0.25,
+		ToastHoldTime = 1.6,
+		ToastOutTime = 0.3,
+		OverlayInTime = 0.3,
+		OverlayHoldTime = 2.4, -- auto-dismiss; a tap dismisses sooner (§81: never trap the player)
+		OverlayOutTime = 0.35,
+		OverlayDim = 0.35, -- background transparency behind the card
+		PromptFadeTime = 0.15,
+		-- Prompt cards are sized in studs (BillboardGui scale), so they grow as you approach.
+		PromptWidthStuds = 7,
+		PromptHeightStuds = 2.2,
+		PromptLiftStuds = 3,
+		-- SWING touch button, as a fraction of the screen. Min size is UIStyle.MIN_TOUCH_PX.
+		SwingButtonSize = 0.16,
+		PopTime = 0.18, -- small "something changed" scale bounce
+		PopScale = 1.12,
+		PressScale = 0.9, -- touch button squash on press
+	},
+
 	-- ── Analytics ───────────────────────────────────────────────
 	Analytics = {
 		Enabled = true,
