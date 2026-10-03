@@ -30,3 +30,9 @@ Thumbs.db
 .env
 *.key
 secrets*.json
+
+# Agent session helpers (edit scripts, commit-message drafts). These live outside the repo
+# in ~/.ptk-tools; this is a backstop so a future session can never commit them.
+*_edit.py
+*_fix.py
+*_commit*.txt
