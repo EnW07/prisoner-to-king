@@ -110,7 +110,9 @@ function CombatService.HandleAttack(player: Player)
 end
 
 -- ── Weapons ─────────────────────────────────────────────────────
-function CombatService.GiveWeapon(player: Player, weaponId: string)
+-- autoEquip: put it straight into the player's hand. Reserved for the §115 first-run
+-- guarantees; every other weapon is collected and equipped by choice.
+function CombatService.GiveWeapon(player: Player, weaponId: string, autoEquip: boolean?)
 	local weapon = WeaponConfig.Get(weaponId)
 	if not weapon then
 		return
@@ -126,10 +128,12 @@ function CombatService.GiveWeapon(player: Player, weaponId: string)
 	end
 
 	-- M2 item 4: weapons are collected, not auto-equipped. You choose what to carry in the
-	-- inventory, or from the loot reveal's EQUIP button. The one exception: with nothing but
-	-- fists, your first weapon goes straight into your hand (the §8 tutorial beat, "GRAB A
-	-- WEAPON").
-	if profile.Equipped.WeaponId == "fists" then
+	-- inventory, or from the loot reveal's EQUIP button. Two exceptions keep run 1
+	-- deterministic (§115):
+	--   • with nothing but fists, your first weapon goes straight into your hand (the §8
+	--     tutorial beat, "GRAB A WEAPON");
+	--   • the caller asks for it (autoEquip): the first chest's guaranteed Rusty Sword.
+	if profile.Equipped.WeaponId == "fists" or autoEquip then
 		profile.Equipped.WeaponId = weaponId
 		CombatService.EquipVisual(player)
 	end

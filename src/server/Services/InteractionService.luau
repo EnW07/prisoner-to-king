@@ -150,8 +150,14 @@ function InteractionService.Init(context, builtWorld)
 
 		ctx.Analytics.Log(player, "FirstChestOpened", 1)
 
-		-- §115: the first chest ALWAYS contains the Rusty Sword. No random onboarding.
-		ctx.Combat.GiveWeapon(player, LootConfig.Guarantees.FirstChestWeapon)
+		-- §115: the first chest ALWAYS contains the Rusty Sword, and the FIRST time a player
+		-- gets it, it goes straight into their hand. A new player who doesn't notice the
+		-- reveal's EQUIP button must not fight Bronn with a 7-damage spoon. Once they own it,
+		-- later chests leave their chosen weapon alone (manual equip, M2 item 4).
+		local guaranteed = LootConfig.Guarantees.FirstChestWeapon
+		local profile = ctx.Data.Get(player)
+		local firstTime = profile ~= nil and not table.find(profile.Inventory.Weapons, guaranteed)
+		ctx.Combat.GiveWeapon(player, guaranteed, firstTime)
 		ctx.RunState.AddUnsecuredGold(player, GameConfig.Economy.ChestGold)
 		Notify:FireClient(player, { Text = ("+%d Gold"):format(GameConfig.Economy.ChestGold), Kind = "gold" })
 
