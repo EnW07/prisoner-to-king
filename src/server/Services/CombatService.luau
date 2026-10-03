@@ -125,9 +125,11 @@ function CombatService.GiveWeapon(player: Player, weaponId: string)
 		table.insert(profile.Inventory.Weapons, weaponId)
 	end
 
-	-- Milestone 1 auto-equips anything stronger. Manual equip arrives in Milestone 2.
-	local current = WeaponConfig.Get(profile.Equipped.WeaponId)
-	if not current or weapon.Damage > current.Damage then
+	-- M2 item 4: weapons are collected, not auto-equipped. You choose what to carry in the
+	-- inventory, or from the loot reveal's EQUIP button. The one exception: with nothing but
+	-- fists, your first weapon goes straight into your hand (the §8 tutorial beat, "GRAB A
+	-- WEAPON").
+	if profile.Equipped.WeaponId == "fists" then
 		profile.Equipped.WeaponId = weaponId
 		CombatService.EquipVisual(player)
 	end
@@ -140,6 +142,8 @@ function CombatService.GiveWeapon(player: Player, weaponId: string)
 		Sub = ("+%d DAMAGE"):format(weapon.Damage),
 		Kind = "weapon",
 		Rarity = weapon.Rarity,
+		WeaponId = weaponId, -- for the 3D loot reveal
+		Equipped = profile.Equipped.WeaponId == weaponId,
 	})
 
 	ctx.Economy.PushState(player)
