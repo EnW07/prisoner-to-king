@@ -215,6 +215,18 @@ local WeaponConfig: { [string]: Weapon } = {
 	},
 }
 
+-- Each class's identity in words, for the inventory (J3): the player should be able to
+-- say what a weapon DOES, not just its number.
+WeaponConfig.ClassIdentity = {
+	Unarmed = "",
+	Dagger = "FAST · LONG DASH",
+	Sword = "BALANCED · 3-HIT CHAIN",
+	Axe = "SLOW · BREAKS GUARD",
+	Spear = "REACH · OUTRANGES GUARDS",
+	Greatsword = "HEAVY · EVERY HIT SHOVES",
+	Hammer = "SLOWEST · STUNS",
+}
+
 -- Rarity → colour, used by loot beams and UI. (§13: don't rely on UI colour alone,
 -- but colour is still the cheapest first signal in a graybox.)
 WeaponConfig.RarityColors = {

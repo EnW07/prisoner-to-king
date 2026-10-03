@@ -81,7 +81,7 @@ function InteractionService.Init(context, builtWorld)
 	end)
 
 	-- ── 2. GRAB A WEAPON ───────────────────────────────────────
-	local weaponPrompt = makePrompt(world.WeaponPlank, "Take", "GRAB A WEAPON")
+	local weaponPrompt = makePrompt(world.WeaponPlank, "Steal", "GRAB A WEAPON")
 	weaponPrompt:SetAttribute("PTKGate", "weapon")
 	weaponPrompt.Triggered:Connect(function(player)
 		if not validate(player, world.WeaponPlank) then

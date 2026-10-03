@@ -43,8 +43,14 @@ local owned: { string } = {}
 local equipped: string? = nil
 local bonus = 0 -- weapon-upgrade bonus: applies to whichever weapon is equipped
 local isOpen = false
+local sortButtonLabel: TextLabel
 
--- Weapons worth showing (fists aren't an item), strongest first.
+-- Sorting (J3): three orders, cycled by one button.
+local SORTS = { "DAMAGE", "RARITY", "CLASS" }
+local RARITY_RANK = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6 }
+local sortIndex = 1
+
+-- Weapons worth showing (fists aren't an item), in the chosen order.
 local function sortedOwned(): { string }
 	local list = {}
 	for _, id in owned do
@@ -53,10 +59,46 @@ local function sortedOwned(): { string }
 			table.insert(list, id)
 		end
 	end
+	local mode = SORTS[sortIndex]
 	table.sort(list, function(a, b)
-		return (WeaponConfig.Get(a) :: any).Damage > (WeaponConfig.Get(b) :: any).Damage
+		local wa, wb = WeaponConfig.Get(a) :: any, WeaponConfig.Get(b) :: any
+		if mode == "RARITY" then
+			local ra, rb = RARITY_RANK[wa.Rarity] or 0, RARITY_RANK[wb.Rarity] or 0
+			if ra ~= rb then
+				return ra > rb
+			end
+		elseif mode == "CLASS" then
+			if wa.WeaponClass ~= wb.WeaponClass then
+				return wa.WeaponClass < wb.WeaponClass
+			end
+		end
+		return wa.Damage > wb.Damage
 	end)
 	return list
+end
+
+-- How this weapon compares with the one in your hand, in words and a signed number.
+local function comparison(weapon): string
+	local current = equipped and WeaponConfig.Get(equipped) :: any
+	if not current or current.WeaponClass == "Unarmed" then
+		return "TAP TO EQUIP"
+	end
+	local delta = weapon.Damage - current.Damage
+	local parts = {}
+	if delta ~= 0 then
+		table.insert(parts, ("%+d DMG"):format(delta))
+	else
+		table.insert(parts, "SAME DMG")
+	end
+	if weapon.AttackCooldown < current.AttackCooldown - 0.01 then
+		table.insert(parts, "FASTER")
+	elseif weapon.AttackCooldown > current.AttackCooldown + 0.01 then
+		table.insert(parts, "SLOWER")
+	end
+	if weapon.Reach > current.Reach + 0.5 then
+		table.insert(parts, "LONGER")
+	end
+	return table.concat(parts, " · ")
 end
 
 local function rarityTint(slot: GuiObject, rarity: string)
@@ -82,7 +124,7 @@ local function buildSlot(id: string, order: number)
 	rarityTint(slot, weapon.Rarity)
 	UIStyle.List(content, Enum.FillDirection.Vertical, UDim.new(0.02, 0))
 
-	local icon = ViewportIcon.Create(content, UDim2.fromScale(1, 0.56))
+	local icon = ViewportIcon.Create(content, UDim2.fromScale(1, 0.46))
 	icon.LayoutOrder = 1
 	ViewportIcon.SetModel(icon, WeaponModel.Build(id))
 	ViewportIcon.SetSpinning(icon, id == equipped)
@@ -100,16 +142,28 @@ local function buildSlot(id: string, order: number)
 	)
 	stats.Font = UIStyle.BODY_FONT
 	stats.LayoutOrder = 3
+	-- The class identity in words (J3): what it DOES, not just its number.
+	local identity = UIStyle.Text(
+		"Identity",
+		content,
+		(WeaponConfig :: any).ClassIdentity[weapon.WeaponClass] or "",
+		UDim2.fromScale(1, 0.1),
+		nil,
+		18
+	)
+	identity.Font = UIStyle.BODY_FONT
+	identity.LayoutOrder = 4
 	local tag = UIStyle.Text(
 		"Tag",
 		content,
-		if id == equipped then "EQUIPPED" else "TAP TO EQUIP",
+		if id == equipped then "EQUIPPED" else comparison(weapon),
 		UDim2.fromScale(1, 0.12),
 		nil,
-		20
+		20,
+		if id == equipped then Palette.gold else UIStyle.TEXT
 	)
 	tag.Font = UIStyle.BODY_FONT
-	tag.LayoutOrder = 4
+	tag.LayoutOrder = 5
 
 	local scale = Instance.new("UIScale")
 	scale.Parent = slot
@@ -211,8 +265,35 @@ local function build()
 	panelScale = Instance.new("UIScale")
 	panelScale.Parent = panel
 
-	local title = UIStyle.Text("Title", content, "YOUR WEAPONS", UDim2.fromScale(0.8, 0.12), nil, 40)
+	local title = UIStyle.Text("Title", content, "YOUR WEAPONS", UDim2.fromScale(0.5, 0.12), nil, 40)
 	title.TextXAlignment = Enum.TextXAlignment.Left
+
+	-- SORT: one button that cycles the order (J3).
+	local sortBtn, sortContent = UIStyle.Panel(
+		"Frame",
+		"Sort",
+		content,
+		UDim2.fromScale(0.3, 0.12),
+		UDim2.fromScale(0.84, 0),
+		Vector2.new(1, 0)
+	)
+	sortButtonLabel = UIStyle.Text("Label", sortContent, "SORT: DAMAGE", UDim2.fromScale(1, 1), nil, 22)
+	sortButtonLabel.Font = UIStyle.BODY_FONT
+	local sortScale = Instance.new("UIScale")
+	sortScale.Parent = sortBtn
+	local sortHit = Instance.new("TextButton")
+	sortHit.Size = UDim2.fromScale(1, 1)
+	sortHit.BackgroundTransparency = 1
+	sortHit.Text = ""
+	sortHit.ZIndex = 4
+	sortHit.Parent = sortBtn
+	sortHit.Activated:Connect(function()
+		sortIndex = sortIndex % #SORTS + 1
+		sortButtonLabel.Text = "SORT: " .. SORTS[sortIndex]
+		sortScale.Scale = UI.PressScale
+		TweenService:Create(sortScale, TweenInfo.new(UI.PopTime, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+		rebuild()
+	end)
 
 	-- Close button: top right, a full touch target.
 	local closeBtn, closeContent = UIStyle.Panel(

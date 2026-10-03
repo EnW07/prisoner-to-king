@@ -34,6 +34,9 @@ local UIController = {}
 
 -- Fired when the player taps the weapon slot. InventoryController opens the inventory on it.
 UIController.WeaponSlotTapped = Instance.new("BindableEvent")
+-- Fired with true/false when the HUD enters or leaves its danger state (carrying loot in
+-- the castle), so other elements can agree with the money panel's outline.
+UIController.DangerChanged = Instance.new("BindableEvent")
 
 -- ── Instances ───────────────────────────────────────────────────
 local gui: ScreenGui
@@ -60,6 +63,13 @@ local toastPanel: CanvasGroup
 local toastTitle: TextLabel
 local toastSub: TextLabel
 
+local wantedPanel: GuiObject
+local wantedLabel: TextLabel
+local wantedScale: UIScale
+local pityPanel: GuiObject
+local pityFill: Frame
+local pityLabel: TextLabel
+
 local dim: TextButton
 local card: CanvasGroup
 local cardScale: UIScale
@@ -77,6 +87,10 @@ local pendingGold: number? = nil
 local goldValue = Instance.new("NumberValue")
 local fillTween: Tween? = nil
 local pulseClock = 0
+local shownWanted = 0
+local shownDanger = false
+local wantedClock = 0
+local ROMAN = { "I", "II", "III", "IV", "V" }
 
 -- ── Small helpers ───────────────────────────────────────────────
 local function tween(
@@ -230,6 +244,57 @@ local function buildHud()
 		UIController.WeaponSlotTapped:Fire()
 	end)
 
+	-- 4. WANTED: top right, in `bleed`, impossible to miss at the top level (J2). Hidden at 0.
+	local wantedContent
+	wantedPanel, wantedContent = UIStyle.Panel(
+		"Frame",
+		"Wanted",
+		root,
+		UDim2.fromScale(0.16, 0.075),
+		UDim2.fromScale(1, 0.1),
+		Vector2.new(1, 0)
+	)
+	wantedScale = Instance.new("UIScale")
+	wantedScale.Parent = wantedPanel
+	wantedLabel =
+		UIStyle.Text("Label", wantedContent, "WANTED I", UDim2.fromScale(1, 1), nil, 34, Palette.bleed)
+	UIStyle.SetDanger(wantedPanel, true)
+	wantedPanel.Visible = false
+
+	-- 5. The near goal (§30, I5): the pity meter, a bar with a number, always visible.
+	local pityContent
+	pityPanel, pityContent = UIStyle.Panel(
+		"Frame",
+		"Pity",
+		root,
+		UDim2.fromScale(0.26, 0.085),
+		UDim2.fromScale(0, 0.62),
+		Vector2.new(0, 0)
+	)
+	UIStyle.List(pityContent, Enum.FillDirection.Vertical, UDim.new(0.08, 0))
+	pityLabel = UIStyle.Text("Label", pityContent, "", UDim2.fromScale(1, 0.55), nil, 22)
+	pityLabel.TextXAlignment = Enum.TextXAlignment.Left
+	pityLabel.Font = UIStyle.BODY_FONT
+	pityLabel.LayoutOrder = 1
+	local pityTrack = Instance.new("Frame")
+	pityTrack.Name = "Track"
+	pityTrack.Size = UDim2.fromScale(1, 0.3)
+	pityTrack.BackgroundColor3 = Palette.pitch
+	pityTrack.BorderSizePixel = 0
+	pityTrack.LayoutOrder = 2
+	pityTrack.Parent = pityContent
+	local pityCorner = Instance.new("UICorner")
+	pityCorner.CornerRadius = UDim.new(0.5, 0)
+	pityCorner.Parent = pityTrack
+	pityFill = Instance.new("Frame")
+	pityFill.Size = UDim2.fromScale(0, 1)
+	pityFill.BackgroundColor3 = WeaponConfig.RarityColors.Rare -- the thing it guarantees
+	pityFill.BorderSizePixel = 0
+	pityFill.Parent = pityTrack
+	local pityFillCorner = Instance.new("UICorner")
+	pityFillCorner.CornerRadius = UDim.new(0.5, 0)
+	pityFillCorner.Parent = pityFill
+
 	-- Toast: slides in under the objective. Transient, not one of the six.
 	local toastContent
 	toastPanel, toastContent = UIStyle.Panel(
@@ -367,6 +432,11 @@ end
 
 -- The pulse IS the tension: faster as the total climbs.
 local function pulse(dt: number)
+	-- WANTED pulses at the top level: scale breathing, in `bleed`.
+	if shownWanted >= 3 then
+		wantedClock += dt
+		wantedScale.Scale = 1 + 0.06 * (math.sin(wantedClock * 2 * math.pi / UI.WantedPulsePeriod) + 1) / 2
+	end
 	if sweeping or shownUnsecured <= 0 then
 		pulseClock = 0
 		if not sweeping then
@@ -451,6 +521,32 @@ function UIController.OnState(state)
 	local danger = inRun and runState ~= "Extracted" and unsecured > 0
 	UIStyle.SetDanger(objectivePanel, danger)
 	UIStyle.SetDanger(moneyPanel, danger)
+	if danger ~= shownDanger then
+		shownDanger = danger
+		UIController.DangerChanged:Fire(danger)
+	end
+
+	-- WANTED (J2): visible from level 1, written as a numeral, pulsing at the top.
+	local wanted = state.Wanted or 0
+	if wanted ~= shownWanted then
+		shownWanted = wanted
+		wantedPanel.Visible = wanted > 0
+		wantedLabel.Text = ("WANTED %s"):format(ROMAN[math.clamp(wanted, 1, #ROMAN)])
+		if wanted > 0 then
+			pop(wantedScale)
+		end
+	end
+
+	-- The pity meter (I5): "RARE IN: 2 CAPTAIN KILLS", or the guarantee when full.
+	local charge, full = state.LuckCharge or 0, state.LuckChargeMax or 100
+	local perKill = state.LuckPerKill or 1
+	tween(pityFill, UI.BarFillTime, { Size = UDim2.fromScale(math.clamp(charge / full, 0, 1), 1) })
+	if charge >= full then
+		pityLabel.Text = "NEXT CAPTAIN CHEST: RARE OR BETTER"
+	else
+		local kills = math.max(1, math.ceil((full - charge) / perKill))
+		pityLabel.Text = ("RARE IN: %d CAPTAIN KILL%s"):format(kills, if kills == 1 then "" else "S")
+	end
 end
 
 local toastToken = 0
@@ -532,7 +628,27 @@ function UIController.OnScreenEvent(data)
 	local token = overlayToken
 	cardTitle.Text = data.Title or ""
 	cardTitle.TextColor3 = if escaped then Palette.escape else Palette.bleed
-	cardBody.Text = table.concat(data.Lines or {}, "\n")
+	-- ESCAPED (J3): the structured card. What you banked, the bonus, your time, your run.
+	local lines = data.Lines or {}
+	if data.Secured ~= nil then
+		lines = { ("LOOT SECURED  +%s GOLD"):format(UIStyle.Number(data.Secured)) }
+		if (data.Bonus or 0) > 0 then
+			table.insert(lines, ("FIRST ESCAPE BONUS  +%s GOLD"):format(UIStyle.Number(data.Bonus)))
+		end
+		if (data.CoPlayBonus or 0) > 0 then
+			table.insert(lines, ("ESCAPED TOGETHER  +%s GOLD"):format(UIStyle.Number(data.CoPlayBonus)))
+		end
+		if data.Duration then
+			table.insert(lines, ("TIME  %d:%02d"):format(math.floor(data.Duration / 60), data.Duration % 60))
+		end
+		if data.Rooms then
+			table.insert(lines, ("%d ROOMS  ·  %d KILLS"):format(data.Rooms, data.Kills or 0))
+		end
+		if data.Route == "postern" then
+			table.insert(lines, "OUT THE POSTERN")
+		end
+	end
+	cardBody.Text = table.concat(lines, "\n")
 	UIStyle.SetDanger(card, not escaped)
 
 	overlayGui.Enabled = true

@@ -124,7 +124,17 @@ function ExtractionService.Complete(player: Player, pad: BasePart?, route: strin
 		table.insert(lines, ("First Escape Bonus: +%d Gold"):format(bonus))
 	end
 
-	ScreenEvent:FireClient(player, { Kind = "escaped", Title = "ESCAPED!", Lines = lines })
+	ScreenEvent:FireClient(player, {
+		Kind = "escaped",
+		Title = "ESCAPED!",
+		Lines = lines,
+		Secured = banked,
+		Bonus = bonus,
+		Duration = math.floor(os.clock() - run.StartedAt),
+		Rooms = run.RoomCount,
+		Kills = run.Kills,
+		Route = route or "sewer",
+	})
 
 	-- Move to the hideout.
 	task.wait(0.6)

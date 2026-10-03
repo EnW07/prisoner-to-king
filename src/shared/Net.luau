@@ -15,6 +15,7 @@ local EVENTS = {
 	"RespawnRequest", -- TRY AGAIN, zero arguments; the server respawns only a dead player
 	"DashRequest", -- zero arguments; the server grants the i-frames from its own clock
 	"HeavyRequest", -- zero arguments; the heavy attack, validated like the light one
+	"UpgradeRequest", -- zero arguments; buy the next weapon upgrade, if in the hideout and affordable
 
 	-- Server → Client
 	"StateUpdate", -- gold, unsecured, weapon, objective, run state

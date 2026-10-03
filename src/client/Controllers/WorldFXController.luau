@@ -18,8 +18,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
+local ClientSettings = require(script.Parent:WaitForChild("ClientSettings"))
 
 local FEEL = GameConfig.Feel
+-- The graphics preset (J2): LOW hides the light shafts and halves the torch update rate.
+local torchRate = FEEL.TorchUpdateRate
+local function applyGraphics()
+	local low = ClientSettings.Get("GraphicsLow") == true
+	torchRate = if low then FEEL.TorchUpdateRate / 2 else FEEL.TorchUpdateRate
+	for _, shaft in CollectionService:GetTagged("PTKLightShaft") do
+		if shaft:IsA("BasePart") then
+			shaft.Transparency = if low then 1 else 0.93
+		end
+	end
+end
 local WorldFXController = {}
 
 -- ── Torches ─────────────────────────────────────────────────────
@@ -45,7 +57,7 @@ local torchAccumulator = 0
 local function flickerTorches(dt: number)
 	torchClock += dt
 	torchAccumulator += dt
-	if torchAccumulator < 1 / FEEL.TorchUpdateRate then
+	if torchAccumulator < 1 / torchRate then
 		return
 	end
 	torchAccumulator = 0
@@ -277,6 +289,13 @@ function WorldFXController.Init()
 			watchLoot(part)
 		end
 		drops.ChildAdded:Connect(watchLoot)
+	end)
+
+	applyGraphics()
+	ClientSettings.Changed:Connect(function(key)
+		if key == "GraphicsLow" then
+			applyGraphics()
+		end
 	end)
 
 	Net.Event("StateUpdate").OnClientEvent:Connect(function(state)

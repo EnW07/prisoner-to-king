@@ -5,6 +5,7 @@
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local RateLimiter = require(script.Parent.RateLimiter)
 
 local UpgradeService = {}
 local ctx
@@ -34,13 +35,26 @@ function UpgradeService.Init(context, builtWorld)
 
 	-- Price-free label. ProximityPrompt.ObjectText is replicated, so it can never show a
 	-- per-player price from here; PromptController writes the live cost locally per client.
-	upgradePrompt = makePrompt(world.UpgradePad, "Upgrade", "UPGRADE YOUR WEAPONS", 0.4)
+	upgradePrompt = makePrompt(world.UpgradePad, "Open", "UPGRADE YOUR WEAPONS", 0.2)
 	upgradePrompt:SetAttribute("PTKGate", "upgrade")
 
-	reenterPrompt = makePrompt(world.ReenterPad, "Enter", "BREAK INTO THE CASTLE AGAIN", 0.4)
+	-- RAID is the verb for going back in (art §7).
+	reenterPrompt = makePrompt(world.ReenterPad, "Raid", "BREAK INTO THE CASTLE AGAIN", 0.4)
 	reenterPrompt:SetAttribute("PTKGate", "reenter")
 
+	-- The pad opens the panel (J3); the panel's UPGRADE button sends UpgradeRequest.
 	upgradePrompt.Triggered:Connect(function(player)
+		Notify:FireClient(player, { Text = "", Kind = "upgradePanel" })
+	end)
+	Net.Event("UpgradeRequest").OnServerEvent:Connect(function(player)
+		if not RateLimiter.Check(player, "Upgrade", GameConfig.Economy.MaxUpgradeRate) then
+			return
+		end
+		-- Only from the hideout: the pad is where upgrades happen, panel or not.
+		local run = ctx.RunState.Get(player)
+		if not run or run.State ~= "Safe" then
+			return
+		end
 		UpgradeService.BuyWeaponUpgrade(player)
 	end)
 
