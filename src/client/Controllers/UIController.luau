@@ -457,6 +457,9 @@ function UIController.OnNotify(data)
 	if not data.Text or data.Text == "" then
 		return
 	end
+	if data.Kind == "weapon" and data.WeaponId then
+		return -- LootRevealController shows weapons as a 3D reveal, not a toast
+	end
 	toastToken += 1
 	local token = toastToken
 
@@ -536,6 +539,16 @@ function UIController.OnScreenEvent(data)
 	task.delay(UI.OverlayInTime + UI.OverlayHoldTime, function()
 		hideOverlay(token)
 	end)
+end
+
+-- The HUD weapon slot: where a revealed weapon flies to as it enters the inventory.
+function UIController.GetWeaponSlot(): GuiObject
+	return weaponPanel
+end
+
+-- The HUD ScreenGui, so other controllers can place transient cards in the same space.
+function UIController.GetGui(): ScreenGui
+	return gui
 end
 
 function UIController.Init()
