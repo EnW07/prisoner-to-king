@@ -37,6 +37,11 @@ These come from blueprint §103/§44 and are not up for renegotiation without a 
 8. **Never invent a Roblox API.** If uncertain about a signature, flag it in a comment and
    verify against current Creator docs. `AnalyticsService` is the existing example — every
    call is `pcall`-wrapped so an API change degrades to a log line, not a crash.
+9. **NPCs do not get Roblox's default animations automatically — that applies to player
+   characters only. Any NPC locomotion must be driven explicitly by the animation system.**
+   (Roblox's defaults come from the `Animate` LocalScript, which only player characters get,
+   and a LocalScript can't run in an NPC. Here, `EnemyAnimator` drives NPCs from
+   `AnimationConfig`.)
 
 ## Scope discipline
 
