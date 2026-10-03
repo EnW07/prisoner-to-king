@@ -3,7 +3,14 @@
 [tools]
 rojo = "rojo-rbx/rojo@7.4.4"
 stylua = "JohnnyMorganz/StyLua@0.20.0"
-# Luau toolchain, pinned for the parse check. This release bundles `luau-compile`, the binary
-# CI and the pre-commit sweep invoke as `luau-compile --binary`. (Rokit shims the primary
-# `luau` binary; `luau-compile` is used from the same pinned release.)
+# Luau toolchain, pinned for the parse check. Keep in sync with LUAU_VERSION in
+# .github/workflows/ci.yml.
+#
+# KNOWN LIMITATION, don't spend time on it: Rokit installs exactly ONE binary per entry
+# (only `luau.exe` lands in ~/.rokit/tool-storage/luau-lang/luau/0.733.0). It cannot shim
+# `luau-compile` from the same release, and a second alias pointing at luau-lang/luau
+# resolves to that same stored `luau.exe`. CI unzips `luau-compile` directly from the
+# release's luau-ubuntu.zip. Locally, either take luau-compile.exe from that release's
+# luau-windows.zip and put it on PATH, or run the equivalent check through the pinned
+# `luau`: `loadstring(source)` on each file compiles it without running it.
 luau = "luau-lang/luau@0.733"
