@@ -166,6 +166,60 @@ local function notifyEngaged(f: Fight, payload)
 end
 
 -- ── Presentation ────────────────────────────────────────────────
+-- His face in a ViewportFrame beside the health bar, so the boss has a face in the UI
+-- (RIGS_AND_VISUAL_UI_BRIEF §2.4). It renders a COPY of his helmed head: the head, helm
+-- and crest, re-posed around the origin and anchored. Static, so it costs one render,
+-- not one per frame.
+local function makePortrait(model: Model, head: BasePart, parent: Instance, sizePx: number)
+	local frame = Instance.new("ViewportFrame")
+	frame.Name = "Portrait"
+	frame.Size = UDim2.fromOffset(sizePx, sizePx)
+	frame.BackgroundColor3 = Palette.pitch
+	frame.BorderSizePixel = 0
+	frame.Ambient = Palette.stone
+	frame.LightColor = Palette.ember
+	frame.LightDirection = Vector3.new(-1, -1, 1)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.25, 0)
+	corner.Parent = frame
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Palette.bleed -- he is danger (art §3)
+	stroke.Thickness = 3
+	stroke.Parent = frame
+
+	local bust = Instance.new("Model")
+	bust.Name = "Bust"
+	local origin = head.CFrame
+	for _, name in { "Head", "Helm", "Crest" } do
+		local source = model:FindFirstChild(name)
+		if source and source:IsA("BasePart") then
+			local copy = source:Clone()
+			-- Joints, welds and attachments mean nothing in a viewport; strip them.
+			for _, child in copy:GetChildren() do
+				if child:IsA("JointInstance") or child:IsA("WeldConstraint") or child:IsA("Attachment") then
+					child:Destroy()
+				end
+			end
+			copy.Anchored = true
+			copy.CFrame = origin:ToObjectSpace(source.CFrame)
+			copy.Parent = bust
+		end
+	end
+	bust.Parent = frame
+
+	-- Face-on: R15 heads face -Z, so the camera sits on -Z looking back at the face,
+	-- framed tight on the bust's bounds.
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = TUNE.PortraitFov
+	local centre, size = bust:GetBoundingBox()
+	local extent = math.max(size.X, size.Y, size.Z)
+	local distance = (extent / 2) / math.tan(math.rad(camera.FieldOfView) / 2) * TUNE.PortraitMargin
+	camera.CFrame = CFrame.lookAt(centre.Position + Vector3.new(0, 0, -distance), centre.Position)
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	frame.Parent = parent
+end
+
 -- Silhouette: an R15 rig scaled from EnemyConfig (RigFactory), so he is genuinely taller,
 -- broader and bulkier than any guard. Dressed with pauldrons, a crested helm and an oversized
 -- greatsword held in his hand. Readable as a black shape (art §8 priority 1).
@@ -237,17 +291,25 @@ local function dress(record): (Motor6D, CFrame, BasePart, Highlight, Nameplate)
 
 	-- Name + health bar, readable from the cellblock door (brief: "a thing you fight").
 	-- Offset-sized so it stays legible at distance; occluded by walls so it isn't a wallhack.
+	-- Layout (pixels: the nameplate is offset-sized so it stays legible at distance):
+	-- [portrait][ NAME / health bar ]
+	-- [        CALLOUT              ]
+	local portraitPx = TUNE.PortraitPx
+	local textX = portraitPx + 6
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Nameplate"
-	gui.Size = UDim2.fromOffset(300, 96)
+	gui.Size = UDim2.fromOffset(textX + 300, 96)
 	gui.StudsOffset = Vector3.new(0, head.Size.Y + 2.4, 0)
 	gui.MaxDistance = TUNE.NameplateMaxDistance
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Parent = head
 
+	makePortrait(model, head, gui, portraitPx)
+
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, 0, 0, 30)
+	nameLabel.Size = UDim2.new(1, -textX, 0, 30)
+	nameLabel.Position = UDim2.fromOffset(textX, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = record.Config.DisplayName:upper()
 	nameLabel.Font = Enum.Font.GothamBlack
@@ -257,8 +319,8 @@ local function dress(record): (Motor6D, CFrame, BasePart, Highlight, Nameplate)
 	nameLabel.Parent = gui
 
 	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, 0, 0, 22)
-	bar.Position = UDim2.fromOffset(0, 32)
+	bar.Size = UDim2.new(1, -textX, 0, 22)
+	bar.Position = UDim2.fromOffset(textX, 32)
 	bar.BackgroundColor3 = Palette.pitch
 	bar.BorderSizePixel = 0
 	bar.Parent = gui
