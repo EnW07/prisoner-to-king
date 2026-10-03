@@ -285,6 +285,19 @@ function LootService.RollTable(tableName: string): { any }
 	return results
 end
 
+-- Roll a loot table and drop the results at `position`, owned by `owner` if given, so a
+-- bystander can't take someone else's reward. Used by the repeat-run chest.
+function LootService.DropTable(tableName: string, position: Vector3, owner: Player?)
+	local ownerId = owner and owner.UserId or nil
+	for _, entry in LootService.RollTable(tableName) do
+		if entry.Kind == "Gold" then
+			LootService.Spawn("Gold", position, math.random(entry.Min or 1, entry.Max or 1), ownerId)
+		elseif entry.Kind == "Weapon" and entry.Id then
+			LootService.Spawn("Weapon", position, entry.Id, ownerId)
+		end
+	end
+end
+
 -- Drop everything an enemy owes, at its death position.
 function LootService.DropForEnemy(enemyId: string, position: Vector3, killer: Player?)
 	local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
