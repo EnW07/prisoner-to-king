@@ -61,6 +61,11 @@ Levels 0–3 only for this milestone. Do not build all six.
 - Each level increases guard spawn rate and a gold multiplier.
 - Display it in the HUD top bar (§80: "Am I in danger?").
 - The player must be able to *choose* to push it. That choice is the entire point.
+- **Decision 2026-10-03 (playtest 3): replace guard respawning, don't tune it.** Guards you
+  kill stay dead for the run. New guards arrive through the wanted system and spawn at
+  entrances, never where someone was killed. Clearing a room should feel permanent, and the
+  alarm should be the actual threat. Build this in `m2/wanted-system`, and remove the
+  `GameConfig.Enemy.RespawnDelay` behaviour when you do (VISUAL_OVERHAUL_PLAN §4).
 
 ### 4. Inventory and equip
 
