@@ -125,9 +125,20 @@ local function plan(move, options: Options): { any }
 	for _, phase in PHASES do
 		local list = move[phase]
 		if list then
+			-- A step spans its slowest joint (time + its delay) plus any hold. The phase's
+			-- authored span is the sum; delays scale with the rest so a phase filled with a
+			-- caller's duration lasts exactly that long (the strike arc must land on time).
 			local total = 0
-			for _, step in list do
-				total += (step.Time or 0) + (step.Hold or 0)
+			local longest = {}
+			for i, step in list do
+				local maxDelay = 0
+				if step.Delay then
+					for _, d in step.Delay do
+						maxDelay = math.max(maxDelay, d)
+					end
+				end
+				longest[i] = maxDelay
+				total += (step.Time or 0) + maxDelay + (step.Hold or 0)
 			end
 			local given = (durations :: any)[phase]
 			local scale: number
@@ -137,15 +148,23 @@ local function plan(move, options: Options): { any }
 				scale = (weight :: any)[phase] or 1
 			end
 			for i, step in list do
+				local delay: { [string]: number }? = nil
+				if step.Delay then
+					delay = {}
+					for joint, d in step.Delay do
+						(delay :: any)[joint] = d * scale
+					end
+				end
 				table.insert(steps, {
 					Phase = phase,
 					First = i == 1,
 					Pose = step.Pose,
 					Time = (step.Time or 0) * scale,
 					Hold = (step.Hold or 0) * scale,
+					Span = ((step.Time or 0) + longest[i] + (step.Hold or 0)) * scale,
 					Style = easing(step.Style),
 					Dir = direction(step.Dir),
-					Delay = step.Delay,
+					Delay = delay,
 					Snap = step.Snap == true,
 				})
 			end
@@ -213,12 +232,6 @@ function PoseAnimator.Play(rig: Rig.Rig, moveName: string, options: Options?): H
 			opts.OnPhase(step.Phase)
 		end
 
-		local longestDelay = 0
-		if step.Delay then
-			for _, d in step.Delay do
-				longestDelay = math.max(longestDelay, d)
-			end
-		end
 		if step.Snap then
 			-- An instant pose (a freeze frame, a ragdoll hand-off). No tweens.
 			local pose = AnimationConfig.Poses[step.Pose] or {}
@@ -232,7 +245,7 @@ function PoseAnimator.Play(rig: Rig.Rig, moveName: string, options: Options?): H
 
 		-- The pacer runs for the step's full span (slowest joint + hold) and drives the next
 		-- step from its Completed, so a paused pacer pauses the chain.
-		local span = math.max(step.Time + longestDelay + step.Hold, 0.01)
+		local span = math.max(step.Span, 0.01)
 		pacer.Value = 0
 		local pace = TweenService:Create(pacer, TweenInfo.new(span, Enum.EasingStyle.Linear), { Value = 1 })
 		track(pace)

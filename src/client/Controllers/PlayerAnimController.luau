@@ -47,7 +47,20 @@ local unposeable: { [Model]: boolean } = setmetatable({}, { __mode = "k" }) :: a
 -- Loaded clip tracks per Animator and slot. Weak: a dead character's Animator is collected.
 local clips: { [Instance]: { [string]: AnimationTrack | false } } = setmetatable({}, { __mode = "k" }) :: any
 
+-- A character's limbs arrive over a few frames after CharacterAdded (and stream in for
+-- other players). Opening the rig early would cache a partial joint set for its whole
+-- life, so wait for the last limb parts before opening.
+local function ready(character: Model): boolean
+	if character:FindFirstChild("UpperTorso") then
+		return character:FindFirstChild("RightFoot") ~= nil and character:FindFirstChild("LeftFoot") ~= nil
+	end
+	return character:FindFirstChild("Right Leg") ~= nil and character:FindFirstChild("Left Leg") ~= nil
+end
+
 local function rigFor(character: Model): Rig.Rig?
+	if not ready(character) then
+		return nil
+	end
 	local rig = Rig.Open(character)
 	if not rig and not unposeable[character] then
 		unposeable[character] = true
