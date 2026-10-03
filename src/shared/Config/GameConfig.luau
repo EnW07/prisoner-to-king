@@ -126,6 +126,11 @@ local GameConfig = {
 		PromptLiftStuds = 3,
 		-- SWING touch button, as a fraction of the screen. Min size is UIStyle.MIN_TOUCH_PX.
 		SwingButtonSize = 0.16,
+		-- 3D item icons (ViewportIcon). Close camera so icons read at phone size.
+		ViewportFov = 30,
+		ViewportMargin = 1.08, -- 1 = the model's largest extent exactly fills the view
+		ViewportTiltDegrees = 45, -- weapons shown on the diagonal
+		ViewportSpinSpeed = 45, -- degrees per second, spinning icons only
 		PopTime = 0.18, -- small "something changed" scale bounce
 		PopScale = 1.12,
 		PressScale = 0.9, -- touch button squash on press

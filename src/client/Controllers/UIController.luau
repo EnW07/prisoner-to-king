@@ -25,10 +25,15 @@ local GameConfig = require(Config:WaitForChild("GameConfig"))
 local Palette = require(Config:WaitForChild("Palette"))
 local WeaponConfig = require(Config:WaitForChild("WeaponConfig"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local ViewportIcon = require(script.Parent:WaitForChild("ViewportIcon"))
+local WeaponModel = require(Shared:WaitForChild("WeaponModel"))
 
 local UI = GameConfig.UI
 local player = Players.LocalPlayer
 local UIController = {}
+
+-- Fired when the player taps the weapon slot. InventoryController opens the inventory on it.
+UIController.WeaponSlotTapped = Instance.new("BindableEvent")
 
 -- ── Instances ───────────────────────────────────────────────────
 local gui: ScreenGui
@@ -46,7 +51,9 @@ local barFill: Frame
 local barLabel: TextLabel
 
 local weaponPanel: GuiObject
-local weaponLabel: TextLabel
+local weaponIcon: ViewportFrame
+local weaponName: TextLabel
+local weaponDamage: TextLabel
 local weaponScale: UIScale
 
 local toastPanel: CanvasGroup
@@ -62,6 +69,7 @@ local cardBody: TextLabel
 -- ── Displayed state (what the screen shows, which lags the server on purpose) ──
 local shownObjective = ""
 local shownWeapon = ""
+local shownWeaponId: string? = nil
 local shownUnsecured = 0
 local inRun = false
 local sweeping = false
@@ -182,20 +190,45 @@ local function buildHud()
 	barLabel.TextXAlignment = Enum.TextXAlignment.Left
 	barLabel.ZIndex = 2
 
-	-- 3. Weapon: bottom left, quiet.
+	-- 3. Weapon slot: bottom left. The equipped weapon as a slowly turning 3D model, with
+	-- name and damage beneath (RIGS_AND_VISUAL_UI_BRIEF §2: show items, not text).
+	-- The whole slot is a button: tapping it opens the inventory.
 	local weaponContent
 	weaponPanel, weaponContent = UIStyle.Panel(
 		"Frame",
 		"Weapon",
 		root,
-		UDim2.fromScale(0.3, 0.08),
+		UDim2.fromScale(0.15, 0.3),
 		UDim2.fromScale(0, 1),
 		Vector2.new(0, 1)
 	)
+	UIStyle.Aspect(weaponPanel, 0.8)
+	local slotFloor = Instance.new("UISizeConstraint")
+	slotFloor.MinSize = Vector2.new(UIStyle.MIN_TOUCH_PX * 1.4, UIStyle.MIN_TOUCH_PX * 1.75)
+	slotFloor.Parent = weaponPanel
 	weaponScale = Instance.new("UIScale")
 	weaponScale.Parent = weaponPanel
-	weaponLabel = UIStyle.Text("Label", weaponContent, "Fists", UDim2.fromScale(1, 1), nil, 30)
-	weaponLabel.TextXAlignment = Enum.TextXAlignment.Left
+	UIStyle.List(weaponContent, Enum.FillDirection.Vertical, UDim.new(0.02, 0))
+	weaponIcon = ViewportIcon.Create(weaponContent, UDim2.fromScale(1, 0.62))
+	weaponIcon.LayoutOrder = 1
+	ViewportIcon.SetSpinning(weaponIcon, true)
+	weaponName = UIStyle.Text("Name", weaponContent, "Fists", UDim2.fromScale(1, 0.2), nil, 26)
+	weaponName.LayoutOrder = 2
+	weaponDamage = UIStyle.Text("Damage", weaponContent, "", UDim2.fromScale(1, 0.14), nil, 22)
+	weaponDamage.Font = UIStyle.BODY_FONT
+	weaponDamage.LayoutOrder = 3
+
+	local slotHit = Instance.new("TextButton")
+	slotHit.Name = "Hit"
+	slotHit.Size = UDim2.fromScale(1, 1)
+	slotHit.BackgroundTransparency = 1
+	slotHit.Text = ""
+	slotHit.ZIndex = 4
+	slotHit.Parent = weaponPanel
+	slotHit.Activated:Connect(function()
+		pop(weaponScale)
+		UIController.WeaponSlotTapped:Fire()
+	end)
 
 	-- Toast: slides in under the objective. Transient, not one of the six.
 	local toastContent
@@ -379,7 +412,12 @@ function UIController.OnState(state)
 	if weaponText ~= shownWeapon then
 		local first = shownWeapon == ""
 		shownWeapon = weaponText
-		weaponLabel.Text = weaponText
+		weaponName.Text = state.Weapon or "Fists"
+		weaponDamage.Text = ("%d DMG"):format(state.WeaponDamage or 0)
+		if state.WeaponId ~= shownWeaponId then
+			shownWeaponId = state.WeaponId
+			ViewportIcon.SetModel(weaponIcon, state.WeaponId and WeaponModel.Build(state.WeaponId) or nil)
+		end
 		if not first then
 			pop(weaponScale)
 		end

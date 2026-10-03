@@ -144,7 +144,7 @@ local function playSwing()
 	end
 
 	local weapon = character:FindFirstChild("EquippedWeapon")
-	local grip = weapon and weapon:FindFirstChild("Grip")
+	local grip = weapon and weapon:FindFirstChild("Grip", true) -- on the weapon model's blade
 	if grip and grip:IsA("Weld") then
 		swingJoint(grip, WRIST, token)
 	end
