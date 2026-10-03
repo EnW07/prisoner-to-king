@@ -59,6 +59,23 @@ local WeaponConfig: { [string]: Weapon } = {
 			Material = Enum.Material.CorrodedMetal,
 		},
 	},
+
+	-- Captain Bronn's guaranteed drop (M2 brief item 1). §11 baseline: 18 dmg, 0.72s.
+	-- Longer and heavier than the Rusty Sword so the upgrade reads by silhouette (art §4).
+	guard_sword = {
+		Name = "Guard Sword",
+		Rarity = "Uncommon",
+		Damage = 18,
+		AttackCooldown = 0.72,
+		WeaponClass = "Sword",
+		SellValue = 80, -- placeholder: selling doesn't exist yet
+		Special = nil,
+		Model = {
+			Size = Vector3.new(0.4, 4.2, 0.4),
+			Color = Color3.fromRGB(170, 170, 180), -- the guards' own blade colour
+			Material = Enum.Material.Metal,
+		},
+	},
 }
 
 -- Rarity → colour, used by loot beams and UI. (§13: don't rely on UI colour alone,

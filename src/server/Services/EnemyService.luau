@@ -35,7 +35,13 @@ function EnemyService.Init(context)
 		accumulator = 0
 		for model, record in active do
 			if model.Parent and record.State ~= "Dead" then
-				EnemyService.Think(record, step)
+				-- Bosses bring their own brain (e.g. CaptainService); everyone else uses Think.
+				local brain = record.Options.Brain
+				if brain then
+					brain(record, step)
+				else
+					EnemyService.Think(record, step)
+				end
 			end
 		end
 	end)
@@ -110,6 +116,11 @@ export type SpawnOptions = {
 	PatrolB: Vector3?,
 	Respawn: boolean?,
 	SpawnCFrame: CFrame?,
+	-- Boss hooks. Brain replaces Think; the others are notifications after the fact.
+	Brain: ((record: any, dt: number) -> ())?,
+	OnDamaged: ((record: any, attacker: Player) -> ())?,
+	OnKilled: ((record: any, killer: Player?) -> ())?,
+	OnKilledPlayer: ((record: any, player: Player, attackName: string) -> ())?,
 }
 
 function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptions?)
@@ -210,17 +221,29 @@ function EnemyService.Think(record, _dt: number)
 end
 
 function EnemyService.AttackPlayer(record, player: Player)
+	EnemyService.DamagePlayer(record, player, record.Config.Damage, "ATTACK")
+end
+
+-- The one path by which an enemy hurts a player. Records which attack landed so the
+-- CAPTURED screen can say exactly what killed you (§12: telegraphs must be learnable).
+function EnemyService.DamagePlayer(record, player: Player, amount: number, attackName: string)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 then
 		return
 	end
-	hum.Health = math.max(0, hum.Health - record.Config.Damage)
+	-- Recorded BEFORE the health change: Humanoid.Died reads it synchronously.
+	ctx.RunState.RecordHit(player, record.Config.DisplayName, attackName)
+	hum.Health = math.max(0, hum.Health - amount)
 	HitConfirm:FireClient(player, {
 		Kind = "taken",
-		Damage = record.Config.Damage,
+		Damage = amount,
 		Position = (record.Model.PrimaryPart :: BasePart).Position,
+		Source = attackName,
 	})
+	if hum.Health <= 0 and record.Options.OnKilledPlayer then
+		record.Options.OnKilledPlayer(record, player, attackName)
+	end
 end
 
 -- ── Damage & death ──────────────────────────────────────────────
@@ -252,6 +275,10 @@ function EnemyService.ApplyDamage(model: Model, amount: number, attacker: Player
 	})
 
 	ctx.Analytics.Log(attacker, "FirstGuardHit", 1, { enemy = record.EnemyId })
+
+	if record.Options.OnDamaged then
+		record.Options.OnDamaged(record, attacker)
+	end
 
 	if humanoid.Health <= 0 then
 		EnemyService.Kill(record, attacker)
@@ -288,6 +315,10 @@ function EnemyService.Kill(record, killer: Player?)
 
 	local model = record.Model
 	active[model] = nil
+
+	if record.Options.OnKilled then
+		record.Options.OnKilled(record, killer)
+	end
 
 	task.delay(GameConfig.Enemy.CorpseDespawn, function()
 		if model.Parent then

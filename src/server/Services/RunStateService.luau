@@ -26,6 +26,8 @@ type Run = {
 	RunIndex: number,
 	StartedAt: number,
 	FirstGuardKilled: boolean,
+	-- The last enemy attack that landed on this player, for the CAPTURED screen.
+	LastHit: { Enemy: string, Attack: string, At: number }?,
 }
 
 local runs: { [number]: Run } = {}
@@ -42,6 +44,7 @@ local function blank(index: number): Run
 		RunIndex = index,
 		StartedAt = os.clock(),
 		FirstGuardKilled = false,
+		LastHit = nil,
 	}
 end
 
@@ -152,6 +155,15 @@ function RunStateService.GiveKey(player: Player)
 	ctx.Economy.PushState(player)
 end
 
+-- Called by EnemyService.DamagePlayer for every enemy hit that lands.
+function RunStateService.RecordHit(player: Player, enemyName: string, attackName: string)
+	local run = runs[player.UserId]
+	if not run then
+		return
+	end
+	run.LastHit = { Enemy = enemyName, Attack = attackName, At = os.clock() }
+end
+
 function RunStateService.OnCharacterAdded(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.MaxHealth = GameConfig.Player.MaxHealth
@@ -196,13 +208,19 @@ function RunStateService.OnDeath(player: Player)
 	ctx.Analytics.Log(player, "RunEnded", run.RunIndex, { result = "death" })
 
 	-- §66: CAPTURED, not "you lost everything". Equipped gear is always kept.
+	local lines = {
+		("Unsecured Gold lost: %d"):format(lost),
+		("Gear kept: %s"):format(bestKept),
+	}
+	-- Name the exact attack that did it, so a death teaches something (§12).
+	local hit = run.LastHit
+	if hit and os.clock() - hit.At <= GameConfig.Run.DeathAttributionWindow then
+		table.insert(lines, 1, ("Taken down by %s: %s"):format(hit.Enemy:upper(), hit.Attack))
+	end
 	ScreenEvent:FireClient(player, {
 		Kind = "captured",
 		Title = "CAPTURED!",
-		Lines = {
-			("Unsecured Gold lost: %d"):format(lost),
-			("Gear kept: %s"):format(bestKept),
-		},
+		Lines = lines,
 	})
 
 	ctx.Data.Save(player, false)

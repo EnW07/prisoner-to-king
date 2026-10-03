@@ -98,8 +98,8 @@ function UpgradeService.BuyWeaponRack(player: Player)
 		Kind = "milestone",
 	})
 
-	-- Bug 3: point at content that exists in M1. The Captain hook returns in M2 (blueprint §82).
-	ctx.RunState.SetObjective(player, "BREAK INTO THE CASTLE AGAIN")
+	-- §82: the hook into the next goal. Restored now that Captain Bronn exists (M1 Bug 3 note).
+	ctx.RunState.SetObjective(player, "THE CAPTAIN HAS BETTER GEAR")
 	ctx.Data.Save(player, false)
 	ctx.Economy.PushState(player)
 end

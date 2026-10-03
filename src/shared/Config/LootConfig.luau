@@ -3,6 +3,8 @@
 -- All rolling happens SERVER-side in LootService. This file is data only.
 
 export type Entry = { Kind: string, Id: string?, Weight: number, Min: number?, Max: number? }
+-- Always dropped, before any weighted roll. Weapons here are owned by the killer.
+export type Guaranteed = { Kind: string, Id: string }
 
 local LootConfig = {}
 
@@ -20,6 +22,19 @@ LootConfig.Tables = {
 		Entries = {
 			{ Kind = "None", Weight = 55 },
 			{ Kind = "Gold", Weight = 45, Min = 8, Max = 20 },
+		} :: { Entry },
+	},
+
+	-- M2 brief item 1: the Guard Sword is guaranteed. The weighted Captain's Greatsword
+	-- chance is added with the rare-drops work (m2/rare-drops).
+	captain_bronn = {
+		Rolls = 1,
+		Guaranteed = {
+			{ Kind = "Weapon", Id = "guard_sword" },
+		} :: { Guaranteed },
+		Entries = {
+			{ Kind = "None", Weight = 40 },
+			{ Kind = "Gold", Weight = 60, Min = 20, Max = 40 },
 		} :: { Entry },
 	},
 }
