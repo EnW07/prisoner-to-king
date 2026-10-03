@@ -16,6 +16,7 @@ local Players = game:GetService("Players")
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local WeaponConfig = require(game.ReplicatedStorage.Shared.Config.WeaponConfig)
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local WeaponModel = require(game.ReplicatedStorage.Shared.WeaponModel)
 local RateLimiter = require(script.Parent.RateLimiter)
 
 local CombatService = {}
@@ -175,24 +176,25 @@ function CombatService.EquipVisual(player: Player)
 		return
 	end
 
-	local p = Instance.new("Part")
-	p.Name = "EquippedWeapon"
-	p.Size = weapon.Model.Size
-	p.Color = weapon.Model.Color
-	p.Material = weapon.Model.Material
-	p.CanCollide = false
-	p.Massless = true
-	p.CFrame = hand.CFrame * CFrame.new(0, -weapon.Model.Size.Y / 2, 0)
-	p.Parent = character
+	-- The same model the HUD icon shows (WeaponModel), so the hand and the UI always match.
+	local model = WeaponModel.Build(profile.Equipped.WeaponId)
+	if not model or not model.PrimaryPart then
+		return
+	end
+	model.Name = "EquippedWeapon"
+	local blade = model.PrimaryPart :: BasePart
+	local gripOffset = CFrame.new(0, -blade.Size.Y / 2, 0)
+	model:PivotTo(hand.CFrame * gripOffset)
+	model.Parent = character
 
 	-- A Weld (not a WeldConstraint) named "Grip", so the client can tween its C0 for a
 	-- wrist snap on rigs where it can't swing the arm (R6). See CombatController.
 	local grip = Instance.new("Weld")
 	grip.Name = "Grip"
 	grip.Part0 = hand
-	grip.Part1 = p
-	grip.C0 = CFrame.new(0, -weapon.Model.Size.Y / 2, 0)
-	grip.Parent = p
+	grip.Part1 = blade
+	grip.C0 = gripOffset
+	grip.Parent = blade
 end
 
 return CombatService
