@@ -59,6 +59,20 @@ ctx.EnemyService.Spawn("sleepy_guard", world.PatrolGuardSpawn, {
 	Respawn = true,
 	SpawnCFrame = world.PatrolGuardSpawn,
 })
+-- The roster (Section F): each a different problem. The archer covers the vault from the
+-- dais; the shield guard walks the line between the door and the sewer arch; the sentry
+-- makes the corridor a timing problem.
+ctx.EnemyService.Spawn("archer", world.VaultArcherSpawn, { SpawnCFrame = world.VaultArcherSpawn })
+ctx.EnemyService.Spawn("shield_guard", world.VaultShieldSpawn, {
+	PatrolA = world.VaultShieldPatrolA,
+	PatrolB = world.VaultShieldPatrolB,
+	SpawnCFrame = world.VaultShieldSpawn,
+})
+ctx.EnemyService.Spawn(
+	"crossbow_sentry",
+	world.CorridorSentrySpawn,
+	{ SpawnCFrame = world.CorridorSentrySpawn }
+)
 -- M2: Captain Bronn waits in his hall off the vault. (M2 brief item 1)
 ctx.Captain.Spawn()
 

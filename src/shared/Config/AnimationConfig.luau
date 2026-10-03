@@ -125,7 +125,41 @@ AnimationConfig.Enemies = {
 	sleepy_guard = "Guard",
 	alarm_guard = "Spearman",
 	captain_bronn = "Captain",
+	archer = "Archer",
+	shield_guard = "Shield",
+	hound = "Hound",
+	crossbow_sentry = "Sentry",
+	brute = "Brute",
 }
+
+-- The roster's sets share the locomotion defaults and the common reactions.
+local function enemySet(attackMove: string, posture: string?)
+	return {
+		Idle = DEFAULT,
+		Walk = DEFAULT,
+		Run = DEFAULT,
+		Jump = DEFAULT,
+		Fall = DEFAULT,
+		Attack = nil,
+		Alert = nil,
+		Stagger = nil,
+		Flinch = nil,
+		Block = nil,
+		Procedural = {
+			Attack = attackMove,
+			Alert = "Alert",
+			Stagger = "Stagger",
+			Flinch = "Flinch",
+			Block = "ShieldBlock",
+		},
+		Posture = posture,
+	}
+end
+AnimationConfig.Sets.Archer = enemySet("BowShot", "ArcherStance")
+AnimationConfig.Sets.Shield = enemySet("GuardChop", "ShieldStance")
+AnimationConfig.Sets.Hound = enemySet("Leap", "HoundStance")
+AnimationConfig.Sets.Sentry = enemySet("CrossbowFire", "SentryStance")
+AnimationConfig.Sets.Brute = enemySet("GroundSlam", nil)
 
 -- The local player's own actions. Locomotion (idle with breathing, walk, run, jump, fall)
 -- is Roblox's Animate script, which player characters always get. Each slot: a clip id, or
@@ -568,18 +602,148 @@ AnimationConfig.Poses = {
 		LeftElbow = { x = 20 },
 	},
 
-	-- Shield block (shield guards): the shield arm comes up; a recoil when it takes a hit.
+	-- Idle postures (F7): held while an enemy stands with nothing to do, released on alert.
+	LeanWall = {
+		Waist = { x = -4, z = 8 },
+		Neck = { x = 6, z = -6 },
+		Root = { z = -6, P = { -0.15, -0.05, 0 } },
+		LeftShoulder = { x = -20, z = 30 },
+		LeftElbow = { x = 40 },
+		RightShoulder = { x = 5 },
+		LeftHip = { x = 8, z = 6 },
+		RightHip = { x = -6 },
+		RightKnee = { x = -18 },
+	},
+	WarmHands = {
+		Waist = { x = 14 },
+		Neck = { x = 10 },
+		RightShoulder = { x = 60, y = 10 },
+		RightElbow = { x = 70 },
+		LeftShoulder = { x = 60, y = 10 },
+		LeftElbow = { x = 70 },
+	},
+
+	-- Postures baked at spawn for the roster.
+	ArcherStance = {
+		LeftShoulder = { x = 30, y = 5 },
+		LeftElbow = { x = 10 },
+		RightShoulder = { x = 10 },
+		Waist = { y = -10 },
+		Neck = { y = 8 },
+	},
+	ShieldStance = {
+		LeftShoulder = { x = 45, y = 25, z = -5 },
+		LeftElbow = { x = 70 },
+		Waist = { x = 4, y = -8 },
+	},
+	HoundStance = {
+		Waist = { x = 55 },
+		Neck = { x = -40 },
+		Root = { x = 10 },
+		RightShoulder = { x = 70, z = -5 },
+		LeftShoulder = { x = 70, z = -5 },
+		RightHip = { x = -10 },
+		LeftHip = { x = -10 },
+	},
+	SentryStance = {
+		Root = { P = { 0, -0.9, 0 } },
+		RightHip = { x = 80 },
+		RightKnee = { x = -90 },
+		LeftHip = { x = -20 },
+		LeftKnee = { x = -100 },
+		RightShoulder = { x = 75, y = -5 },
+		RightElbow = { x = 10 },
+		LeftShoulder = { x = 70, y = 25 },
+		LeftElbow = { x = 30 },
+		Waist = { x = 8 },
+	},
+
+	-- NOTE: poses on a rig with a baked Posture are DELTAS from that posture (ArcherStance,
+	-- ShieldStance, HoundStance, SentryStance below), so these numbers are small.
+
+	-- Archer: side-on, the bow arm straightens, the string hand draws to the cheek, releases.
+	BowDraw = {
+		LeftShoulder = { x = 58, y = -3 },
+		LeftElbow = { x = -5 },
+		RightShoulder = { x = 65, y = 35, z = 10 },
+		RightElbow = { x = 120 },
+		RightWrist = { x = -10 },
+		Waist = { y = -18 },
+		Neck = { x = -3, y = 17 },
+		Root = { y = -6 },
+	},
+	BowDrawDeep = {
+		LeftShoulder = { x = 60, y = -4 },
+		LeftElbow = { x = -8 },
+		RightShoulder = { x = 62, y = 40, z = 14 },
+		RightElbow = { x = 135 },
+		RightWrist = { x = -12 },
+		Waist = { x = -3, y = -24 },
+		Neck = { x = -4, y = 22 },
+		Root = { y = -8 },
+	},
+	BowRelease = {
+		LeftShoulder = { x = 56, y = -3 },
+		RightShoulder = { x = 45, y = -20, z = 35 },
+		RightElbow = { x = 30 },
+		Waist = { y = -10 },
+		Neck = { y = 10 },
+		Root = { y = -4 },
+	},
+
+	-- Hound (already hunched by HoundStance): the crouch, the stretch in the air, the landing.
+	LeapCrouch = {
+		Waist = { x = 15 },
+		Neck = { x = -10 },
+		Root = { x = 6, P = { 0, -0.45, 0 } },
+		RightShoulder = { x = -30, z = -5 },
+		LeftShoulder = { x = -30, z = -5 },
+		RightHip = { x = 40 },
+		LeftHip = { x = 40 },
+		RightKnee = { x = -80 },
+		LeftKnee = { x = -80 },
+	},
+	LeapAir = {
+		Waist = { x = -20 },
+		Neck = { x = 5 },
+		Root = { x = -10, P = { 0, 0.1, 0 } },
+		RightShoulder = { x = 40, z = 10 },
+		LeftShoulder = { x = 40, z = 10 },
+		RightHip = { x = -20 },
+		LeftHip = { x = -20 },
+		RightKnee = { x = -20 },
+		LeftKnee = { x = -20 },
+	},
+
+	-- Sentry (kneeling, crossbow already level): it comes up to the shoulder, then kicks.
+	CrossbowAim = {
+		RightShoulder = { x = 13, y = -2 },
+		RightElbow = { x = -5 },
+		LeftShoulder = { x = 12, y = -5 },
+		LeftElbow = { x = -10 },
+		Neck = { x = 6, y = -4 },
+		Waist = { x = 4 },
+	},
+	CrossbowKick = {
+		RightShoulder = { x = 21, y = -2 },
+		LeftShoulder = { x = 18, y = -5 },
+		Neck = { x = -4 },
+		Waist = { x = -2, P = { 0, 0, 0.1 } },
+	},
+
+	-- Shield block (shield guards, shield already raised by ShieldStance): the shield comes
+	-- up a little more and the body braces; a recoil when it takes a hit.
 	ShieldUp = {
-		LeftShoulder = { x = 70, y = 30, z = -5 },
-		LeftElbow = { x = 80 },
-		Waist = { x = 6, y = -10 },
+		LeftShoulder = { x = 25, y = 5 },
+		LeftElbow = { x = 10 },
+		Waist = { x = 2, y = -2 },
 		Neck = { x = 3 },
 		Root = { x = 2, P = { 0, -0.1, 0 } },
 	},
 	ShieldRecoil = {
-		LeftShoulder = { x = 60, y = 40, z = 5 },
-		LeftElbow = { x = 85 },
-		Waist = { x = -8, y = -18 },
+		LeftShoulder = { x = 15, y = 15, z = 10 },
+		LeftElbow = { x = 15 },
+		Waist = { x = -8, y = -10 },
 		Neck = { x = -6 },
 		Root = { x = -4, P = { 0, 0, 0.2 } },
 	},
@@ -893,6 +1057,45 @@ AnimationConfig.Moves = {
 	ShieldBlock = {
 		Strike = { { Pose = "ShieldRecoil", Time = 0.06, Style = "Quad", Dir = "Out", Hold = 0.08 } },
 		Recover = { { Pose = "ShieldUp", Time = 0.25, Style = "Back", Dir = "Out" } },
+	},
+
+	-- Archer (F2): the draw IS the telegraph; the release is instant; the recovery brings the
+	-- string hand back toward the quiver.
+	BowShot = {
+		Wind = {
+			{ Pose = "BowDraw", Time = 0.35, Style = "Sine", Dir = "Out", Delay = { RightShoulder = 0.04 } },
+			{ Pose = "BowDrawDeep", Time = 0.65, Style = "Sine", Dir = "InOut" },
+		},
+		Strike = { { Pose = "BowRelease", Time = 0.06, Style = "Quint", Dir = "Out", Hold = 0.2 } },
+		Recover = { { Pose = "Rest", Time = 1, Style = "Sine", Dir = "InOut" } },
+	},
+	-- Hound (F4): a crouch you can read, the stretch in the air (held for AirTime), a landing.
+	Leap = {
+		Wind = { { Pose = "LeapCrouch", Time = 1, Style = "Back", Dir = "Out" } },
+		Strike = { { Pose = "LeapAir", Time = 0.08, Style = "Quint", Dir = "Out", Hold = 0.4 } },
+		Recover = {
+			{ Pose = "LeapCrouch", Time = 0.15, Style = "Quad", Dir = "Out", Hold = 0.2 },
+			{ Pose = "Rest", Time = 0.4, Style = "Sine", Dir = "InOut" },
+		},
+	},
+	-- Sentry (F5): the aim is the click before the shot.
+	CrossbowFire = {
+		Wind = { { Pose = "CrossbowAim", Time = 1, Style = "Sine", Dir = "Out" } },
+		Strike = { { Pose = "CrossbowKick", Time = 0.05, Style = "Quint", Dir = "Out", Hold = 0.15 } },
+		Recover = { { Pose = "Rest", Time = 1, Style = "Sine", Dir = "InOut" } },
+	},
+	-- Brute (F6): the same shape as Bronn's crushing blow, with a club, on its own timing.
+	GroundSlam = {
+		Wind = {
+			{ Pose = "BronnCrushWind", Time = 0.3, Style = "Back", Dir = "Out", Delay = ARM_LAG },
+			{ Pose = "BronnCrushWindDeep", Time = 0.7, Style = "Sine", Dir = "InOut" },
+		},
+		Strike = {
+			{ Pose = "BronnCrushMid", Time = 0.05, Style = "Quad", Dir = "In" },
+			{ Pose = "BronnCrushHit", Time = 0.07, Style = "Quint", Dir = "In", Delay = WRIST_LAG },
+			{ Pose = "BronnCrushThrough", Time = 0.12, Style = "Back", Dir = "Out", Hold = 0.25 },
+		},
+		Recover = { { Pose = "Rest", Time = 1, Style = "Sine", Dir = "InOut", Delay = ARM_LAST } },
 	},
 
 	-- Captain Bronn. Phases filled with each attack's WindUp / impact pause / Recovery.

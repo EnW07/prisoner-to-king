@@ -30,7 +30,17 @@ local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 
 -- Parts that make up an enemy's weapon (RigFactory names), glowed during a windup. Bronn's
 -- Greatsword is lit by CaptainService together with his outline and callout.
-local WEAPON_PARTS = { Blade = true, Spear = true, Spearhead = true }
+local WEAPON_PARTS = {
+	Blade = true,
+	Spear = true,
+	Spearhead = true,
+	Bow = true,
+	Bowstring = true,
+	Crossbow = true,
+	CrossbowLimb = true,
+	Club = true,
+	ClubHead = true,
+}
 
 local ANIM = GameConfig.Animation
 local EnemyAnimator = {}
@@ -358,6 +368,31 @@ function EnemyAnimator.AttackPhase(record, phase: string, duration: number)
 		})
 	elseif phase == "Strike" then
 		glow(state, false)
+	end
+end
+
+-- Hold a pose while idle (a guard leaning on a wall, warming its hands; F7), or release it.
+-- An idle clip keeps playing underneath. Any action takes the joints back.
+function EnemyAnimator.SetPose(record, poseName: string?)
+	local state = states[record]
+	local rig = state and state.Rig
+	if not rig then
+		return
+	end
+	if poseName then
+		state.Breathing = false
+		local pose = AnimationConfig.Poses[poseName]
+		if not pose then
+			return
+		end
+		local info = TweenInfo.new(ANIM.RelaxTime * 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+		PoseAnimator.Cancel(rig)
+		for name, joint in rig.Joints do
+			local angles = pose[name]
+			Rig.TweenTo(joint, if angles then Rig.Offset(rig, joint, angles, 1) else CFrame.identity, info)
+		end
+	else
+		PoseAnimator.Relax(rig, ANIM.RelaxTime)
 	end
 end
 

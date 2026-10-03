@@ -117,6 +117,10 @@ local GameConfig = {
 		-- Fraction of UNSECURED gold lost on death. Equipped gear is never lost. (§14)
 		DeathUnsecuredLossPercent = 1.0,
 		AlarmGuardCount = 2,
+		-- Hounds reach the sewer this long after the alarm (F4: what makes carrying 500
+		-- unsecured gold to the exit frightening).
+		AlarmHoundDelay = 7,
+		AlarmHoundCount = 2,
 		-- The CAPTURED screen names the attack that killed you if it landed this recently.
 		DeathAttributionWindow = 10, -- seconds
 	},
@@ -152,6 +156,27 @@ local GameConfig = {
 		-- Spawns: rigs are stood on the floor found by a short ray down from the spawn point.
 		SpawnProbeLift = 2,
 		SpawnProbeDepth = 30,
+		PackSpread = 3, -- studs between members of a pack (SpawnPack)
+		-- Awareness (F8): the notice beat before an enemy engages, a shorter one when it's
+		-- hit, and how long after losing you it will be surprised again.
+		AlertTime = 0.6,
+		AlertTimeHit = 0.25,
+		AlertCooldown = 6,
+		AlertMarkPx = 64, -- the "!" over the head
+		AlertHearFactor = 1.5, -- players within AggroRange x this hear the alert hook
+		-- A target is kept while within AggroRange x this, sight or not.
+		ChaseRangeFactor = 1.5,
+		-- Variety (F7): attack timing varies ± this fraction per attack.
+		TimingJitter = 0.15,
+		StrafeSpeed = 3, -- radians/s of a strafing enemy's weave
+	},
+
+	-- ── Enemy projectiles (ProjectileService; F2, F5) ───────────
+	Projectile = {
+		MaxLive = 24, -- shots in flight at once, server-wide
+		Lifetime = 6, -- seconds before a shot is removed whatever happened
+		StickTime = 1.2, -- a shot that hit the world stays there this long
+		DefaultSize = Vector3.new(0.25, 0.25, 2.6),
 	},
 
 	-- ── Captain Bronn (M2) ──────────────────────────────────────

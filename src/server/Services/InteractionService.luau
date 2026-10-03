@@ -191,6 +191,17 @@ function InteractionService.TriggerAlarm(player: Player)
 	for i = 1, math.min(GameConfig.Run.AlarmGuardCount, #world.AlarmGuardSpawns) do
 		ctx.EnemyService.Spawn("alarm_guard", world.AlarmGuardSpawns[i], { Respawn = false })
 	end
+
+	-- Hounds reach the sewer a little later (F4): the way out is no longer free, and the
+	-- player hears about it before they get there.
+	if world.SewerHoundSpawn then
+		task.delay(GameConfig.Run.AlarmHoundDelay, function()
+			ctx.EnemyService.SpawnPack("hound", world.SewerHoundSpawn, GameConfig.Run.AlarmHoundCount, {
+				Respawn = false,
+			})
+			Notify:FireAllClients({ Text = "HOUNDS LOOSE IN THE SEWER", Kind = "alarm" })
+		end)
+	end
 end
 
 -- ── Chain movement restriction ──────────────────────────────────

@@ -46,6 +46,21 @@ export type Enemy = {
 	Poise: number,
 	PoiseRegen: number,
 	StaggerDuration: number,
+	-- Identity flags (Section F). EnemyService reads these as data; nothing special-cases
+	-- an enemy id. Each enemy sets at most one or two.
+	PreferredRange: number?, -- ranged: hold this distance...
+	RetreatRange: number?, -- ...and back off when the player is closer than this
+	RetreatStep: number?, -- how far each retreat step goes
+	Projectile: { Speed: number, Range: number, Height: number, Size: Vector3?, Color: Color3? }?,
+	Static: boolean?, -- never moves
+	FixedAim: boolean?, -- fires along its spawn facing, not at the player
+	Leap: { Range: number, MinRange: number, Speed: number, Lift: number, AirTime: number }?,
+	Strafe: number?, -- studs of sideways weave while chasing
+	Telegraph: { Radius: number }?, -- an area slam painted on the floor
+	Shield: { Arc: number }?, -- blocks frontal hits inside this arc (degrees)
+	LightPoiseImmune: boolean?, -- only heavy / guard-breaking hits move its poise
+	-- Variety (F7): per-spawn scale range and body tint jitter.
+	Variation: { Scale: { number }?, Tint: number? }?,
 	GoldMin: number,
 	GoldMax: number,
 	LootTable: string,
@@ -87,6 +102,7 @@ local EnemyConfig: { [string]: Enemy } = {
 		BodyColor = Color3.fromRGB(105, 110, 125),
 		BodySize = Vector3.new(2, 4, 1),
 		Silhouette = "Slouch", -- hunched, capped, sword drooping: harmless at a glance
+		Variation = { Scale = { 0.96, 1.06 }, Tint = 0.08 },
 	},
 
 	-- Spawned by the alarm after the chest is opened. Applies pressure during the run out.
@@ -112,6 +128,149 @@ local EnemyConfig: { [string]: Enemy } = {
 		BodyColor = Color3.fromRGB(80, 70, 70),
 		BodySize = Vector3.new(2, 4, 1),
 		Silhouette = "Armored", -- helmed, upright, tall spear, `bleed` tabard: the alarm's threat
+		Variation = { Scale = { 0.97, 1.08 }, Tint = 0.06 },
+	},
+
+	-- ARCHER (F2). Identity: punishes standing still, weak up close. Holds twenty studs,
+	-- backs off when you close, and every shot has a long, visible draw. Two hits kill it.
+	-- The first real positioning problem: fight the guard while being shot, or break off
+	-- and kill the archer first.
+	archer = {
+		DisplayName = "Archer",
+		MaxHealth = 16,
+		Damage = 9,
+		MoveSpeed = 13,
+		AggroRange = 42,
+		AttackRange = 28,
+		AttackCooldown = 2.2,
+		PreferredRange = 20,
+		RetreatRange = 11,
+		RetreatStep = 8,
+		WindupTime = 0.9,
+		RecoveryTime = 0.7,
+		AttackName = "ARROW",
+		Projectile = { Speed = 55, Range = 50, Height = 1.8 },
+		Poise = 10,
+		PoiseRegen = 8,
+		StaggerDuration = 1,
+		GoldMin = 8,
+		GoldMax = 14,
+		LootTable = "archer",
+		BodyColor = Color3.fromRGB(70, 85, 70),
+		BodySize = Vector3.new(1.7, 4, 0.9),
+		Silhouette = "Archer", -- hooded, lean, a bow in the left hand, a quiver
+		Variation = { Scale = { 0.95, 1.04 }, Tint = 0.08 },
+	},
+
+	-- SHIELD GUARD (F3). Identity: a lock with a specific key. Frontal light attacks do
+	-- nothing but ring the shield. A heavy attack breaks the guard; so does getting behind
+	-- him. Slow, tough, weak hitter.
+	shield_guard = {
+		DisplayName = "Shield Guard",
+		MaxHealth = 70,
+		Damage = 6,
+		MoveSpeed = 8,
+		AggroRange = 30,
+		AttackRange = 6,
+		AttackCooldown = 1.8,
+		StandoffDistance = 4.5,
+		WindupTime = 1.1,
+		RecoveryTime = 1.2,
+		AttackName = "SHIELD BASH",
+		Shield = { Arc = 150 },
+		Poise = 40,
+		PoiseRegen = 10,
+		StaggerDuration = 1.6,
+		GoldMin = 12,
+		GoldMax = 20,
+		LootTable = "shield_guard",
+		BodyColor = Color3.fromRGB(95, 90, 100),
+		BodySize = Vector3.new(2.4, 4.2, 1.2),
+		Silhouette = "Shield", -- a round shield on the left arm, helmed, broad
+		Variation = { Scale = { 0.98, 1.05 }, Tint = 0.05 },
+	},
+
+	-- HOUND (F4). Identity: pressure. Fast, erratic, almost no health, leaps at you, comes
+	-- in packs. Appears with the alarm in the sewer and at high wanted levels.
+	hound = {
+		DisplayName = "Hound",
+		MaxHealth = 14,
+		Damage = 6,
+		MoveSpeed = 22,
+		AggroRange = 60,
+		AttackRange = 5, -- the bite radius at landing
+		AttackCooldown = 1.5,
+		StandoffDistance = 3.5,
+		WindupTime = 0.45,
+		RecoveryTime = 0.7,
+		AttackName = "BITE",
+		Leap = { Range = 16, MinRange = 6, Speed = 34, Lift = 14, AirTime = 0.4 },
+		Strafe = 4,
+		Poise = 8,
+		PoiseRegen = 6,
+		StaggerDuration = 0.8,
+		GoldMin = 3,
+		GoldMax = 7,
+		LootTable = "hound",
+		BodyColor = Color3.fromRGB(55, 45, 40),
+		BodySize = Vector3.new(1.7, 2.3, 1.6),
+		Silhouette = "Hound", -- low, long, snout and ears, hunched onto all fours
+		Variation = { Scale = { 0.92, 1.08 }, Tint = 0.12 },
+	},
+
+	-- CROSSBOW SENTRY (F5). Identity: area denial. Never moves. Fires along one line on a
+	-- fixed interval, whether or not you're in it. A corridor becomes a timing problem.
+	crossbow_sentry = {
+		DisplayName = "Sentry",
+		MaxHealth = 40,
+		Damage = 12,
+		MoveSpeed = 0,
+		AggroRange = 48,
+		AttackRange = 48,
+		AttackCooldown = 2.4, -- the interval
+		WindupTime = 0.5, -- the crossbow comes up: the click before the shot
+		RecoveryTime = 0.4,
+		AttackName = "CROSSBOW BOLT",
+		Static = true,
+		FixedAim = true,
+		Projectile = { Speed = 70, Range = 48, Height = 1.6, Size = Vector3.new(0.2, 0.2, 2) },
+		Poise = 30,
+		PoiseRegen = 10,
+		StaggerDuration = 1.2,
+		GoldMin = 6,
+		GoldMax = 12,
+		LootTable = "sentry",
+		BodyColor = Color3.fromRGB(80, 75, 80),
+		BodySize = Vector3.new(2, 4, 1),
+		Silhouette = "Sentry", -- kneeling behind a heavy crossbow
+	},
+
+	-- BRUTE (F6). Identity: an unmissable threat that changes the room. Huge, slow,
+	-- enormous damage, a telegraphed ground slam painted on the floor. Light attacks can't
+	-- stagger it. When one is in a room, the room is about the brute.
+	brute = {
+		DisplayName = "Brute",
+		MaxHealth = 160,
+		Damage = 30,
+		MoveSpeed = 7,
+		AggroRange = 36,
+		AttackRange = 9,
+		AttackCooldown = 2.6,
+		StandoffDistance = 6,
+		WindupTime = 1.6,
+		RecoveryTime = 1.8,
+		AttackName = "GROUND SLAM",
+		Telegraph = { Radius = 9 },
+		LightPoiseImmune = true,
+		Poise = 60,
+		PoiseRegen = 15,
+		StaggerDuration = 2,
+		GoldMin = 25,
+		GoldMax = 40,
+		LootTable = "brute",
+		BodyColor = Color3.fromRGB(110, 85, 75),
+		BodySize = Vector3.new(3.4, 6.4, 2.1),
+		Silhouette = "Brute", -- a wall of a man with a club the size of a door
 	},
 
 	-- M2 miniboss (blueprint §12 "Captain", §18 template, §111 stats). Waits in his hall off

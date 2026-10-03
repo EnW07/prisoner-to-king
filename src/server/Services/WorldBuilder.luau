@@ -763,6 +763,15 @@ function WorldBuilder.Build()
 		PatrolPointA = Vector3.new(12, g, 0),
 		PatrolPointB = Vector3.new(44, g, 0),
 		AlarmGuardSpawns = { CFrame.new(82, 3, -15), CFrame.new(120, 3, 15) },
+		-- The roster (Section F). An archer on the treasure dais covering the vault; a shield
+		-- guard patrolling the south side, between you and the sewer arch; a sentry in the
+		-- corridor firing across it; hounds loosed into the sewer on the alarm.
+		VaultArcherSpawn = CFrame.lookAt(Vector3.new(111, 4, 17), Vector3.new(90, 4, 0)),
+		VaultShieldSpawn = CFrame.new(96, 3, -11),
+		VaultShieldPatrolA = Vector3.new(84, 0, -12),
+		VaultShieldPatrolB = Vector3.new(116, 0, -12),
+		CorridorSentrySpawn = CFrame.lookAt(Vector3.new(66, 3, 5), Vector3.new(66, 3, -5)),
+		SewerHoundSpawn = CFrame.new(103, -3, -42),
 
 		-- Captain Bronn: on his dais, facing west down the sightline to the cellblock door.
 		CaptainSpawn = CFrame.lookAt(Vector3.new(168, h + 1 + 3.6, 0), Vector3.new(76, h + 1 + 3.6, 0)),

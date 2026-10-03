@@ -27,6 +27,7 @@ local Palette = require(Shared:WaitForChild("Config"):WaitForChild("Palette"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 local HitStop = require(script.Parent:WaitForChild("HitStop"))
 local ClientSettings = require(script.Parent:WaitForChild("ClientSettings"))
+local PlayerAnimController = require(script.Parent:WaitForChild("PlayerAnimController"))
 local GameConfig = require(Shared:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local FEEL = GameConfig.Feel
@@ -310,6 +311,17 @@ function FeedbackController.Init()
 			-- Through the attack with the i-frames: the reward for reading the windup.
 			floatingText(data.Position, "DODGED", Palette.escape, 1.2)
 			playSound("dodge", 0.7)
+		elseif data.Kind == "blocked" then
+			-- A shield took it (F3): a clang, stone sparks, and the attacker recoils. The
+			-- normal attack simply does not work here; that must be unmistakable.
+			sparks(data.Position, FEEL.SparkCountHeavy, Palette.stone)
+			if data.Attacker == player.UserId then
+				floatingText(data.Position, "BLOCKED", UIStyle.TEXT, 1.1)
+				cameraKick(FEEL.KickTaken)
+				HitStop.Freeze(FEEL.HitStopTime)
+				PlayerAnimController.Play("HitReact")
+				playSound("blocked", 0.8)
+			end
 		end
 	end)
 
@@ -320,6 +332,8 @@ function FeedbackController.Init()
 			playSound("rarity" .. tostring(data.Rarity or "Common"), 0.8)
 		elseif data.Kind == "alarm" then
 			playSound("alarm", 0.8)
+		elseif data.Kind == "enemyAlert" then
+			playSound("enemyAlert", 0.6)
 		end
 	end)
 
