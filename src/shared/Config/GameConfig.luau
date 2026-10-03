@@ -98,8 +98,10 @@ local GameConfig = {
 		WatchRange = 90,
 		HomeTolerance = 2, -- studs from his spawn point that count as "home"
 		NameplateMaxDistance = 220, -- readable from the cellblock door, ~70 studs away
-		-- His face beside the health bar (a ViewportFrame of his helmed head).
-		PortraitPx = 56, -- the nameplate is pixel-sized, so the portrait is too
+		-- How often to check Bronn is present (outside his respawn window).
+		WatchdogInterval = 5,
+		-- His boss bar (client, BossBarController): face, name, health, attack callout.
+		PortraitPx = 56, -- the bar is pixel-sized so it stays legible at distance
 		PortraitFov = 35,
 		PortraitMargin = 1.05,
 		TelegraphTransparency = 0.45,

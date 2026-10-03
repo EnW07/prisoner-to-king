@@ -64,15 +64,14 @@ local SWORD_GRIP = CFrame.Angles(math.rad(40), 0, 0) * CFrame.new(0, -(SWORD_SIZ
 local POSE_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SWING_TWEEN = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-type Nameplate = { Fill: Frame, HealthText: TextLabel, Callout: TextLabel }
-
+-- Presentation pieces are optional. If dressing him fails, the fight still runs (playtest 5:
+-- a failed dress used to leave an inert, killable husk with no health bar and no respawn).
 type Fight = {
 	Record: any,
-	Shoulder: Motor6D,
-	ShoulderRest: CFrame,
-	Sword: BasePart,
-	Highlight: Highlight,
-	Nameplate: Nameplate,
+	Shoulder: Motor6D?,
+	ShoulderRest: CFrame?,
+	Sword: BasePart?,
+	Highlight: Highlight?,
 	Busy: boolean,
 	InFight: boolean,
 	RotationIndex: number,
@@ -90,6 +89,8 @@ type Fight = {
 -- objectives are per-player. The eventual fix is per-player (or per-party) dungeon
 -- instancing. Accepted for M2 (decision 2026-10-03). Don't build it piecemeal here.
 local fight: Fight? = nil
+-- True from his death until the respawn delay fires. The watchdog leaves him alone then.
+local respawnPending = false
 
 -- Guards Bronn has called. Module-level, not per-Fight, so a guard that outlives the Bronn
 -- who called it is still found and removed when the next Bronn spawns.
@@ -166,69 +167,12 @@ local function notifyEngaged(f: Fight, payload)
 end
 
 -- ── Presentation ────────────────────────────────────────────────
--- His face in a ViewportFrame beside the health bar, so the boss has a face in the UI
--- (RIGS_AND_VISUAL_UI_BRIEF §2.4). It renders a COPY of his helmed head: the head, helm
--- and crest, re-posed around the origin and anchored. Static, so it costs one render,
--- not one per frame.
-local function makePortrait(model: Model, head: BasePart, parent: Instance, sizePx: number)
-	local frame = Instance.new("ViewportFrame")
-	frame.Name = "Portrait"
-	frame.Size = UDim2.fromOffset(sizePx, sizePx)
-	frame.BackgroundColor3 = Palette.pitch
-	frame.BorderSizePixel = 0
-	frame.Ambient = Palette.stone
-	frame.LightColor = Palette.ember
-	frame.LightDirection = Vector3.new(-1, -1, 1)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.25, 0)
-	corner.Parent = frame
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Palette.bleed -- he is danger (art §3)
-	stroke.Thickness = 3
-	stroke.Parent = frame
-
-	local bust = Instance.new("Model")
-	bust.Name = "Bust"
-	local origin = head.CFrame
-	for _, name in { "Head", "Helm", "Crest" } do
-		local source = model:FindFirstChild(name)
-		if source and source:IsA("BasePart") then
-			local copy = source:Clone()
-			-- Joints, welds and attachments mean nothing in a viewport; strip them.
-			for _, child in copy:GetChildren() do
-				if child:IsA("JointInstance") or child:IsA("WeldConstraint") or child:IsA("Attachment") then
-					child:Destroy()
-				end
-			end
-			copy.Anchored = true
-			copy.CFrame = origin:ToObjectSpace(source.CFrame)
-			copy.Parent = bust
-		end
-	end
-	bust.Parent = frame
-
-	-- Face-on: R15 heads face -Z, so the camera sits on -Z looking back at the face,
-	-- framed tight on the bust's bounds.
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = TUNE.PortraitFov
-	local centre, size = bust:GetBoundingBox()
-	local extent = math.max(size.X, size.Y, size.Z)
-	local distance = (extent / 2) / math.tan(math.rad(camera.FieldOfView) / 2) * TUNE.PortraitMargin
-	camera.CFrame = CFrame.lookAt(centre.Position + Vector3.new(0, 0, -distance), centre.Position)
-	camera.Parent = frame
-	frame.CurrentCamera = camera
-	frame.Parent = parent
-end
-
 -- Silhouette: an R15 rig scaled from EnemyConfig (RigFactory), so he is genuinely taller,
 -- broader and bulkier than any guard. Dressed with pauldrons, a crested helm and an oversized
 -- greatsword held in his hand. Readable as a black shape (art §8 priority 1).
-local function dress(record): (Motor6D, CFrame, BasePart, Highlight, Nameplate)
+local function dress(record): (Motor6D, CFrame, BasePart?, Highlight)
 	local model: Model = record.Model
 	local head = model:FindFirstChild("Head") :: BasePart
-
-	-- His own nameplate replaces the stock Humanoid one.
-	record.Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 
 	for _, side in { "Left", "Right" } do
 		local arm = model:FindFirstChild(side .. "UpperArm") :: BasePart?
@@ -289,91 +233,27 @@ local function dress(record): (Motor6D, CFrame, BasePart, Highlight, Nameplate)
 	highlight.Enabled = false
 	highlight.Parent = model
 
-	-- Name + health bar, readable from the cellblock door (brief: "a thing you fight").
-	-- Offset-sized so it stays legible at distance; occluded by walls so it isn't a wallhack.
-	-- Layout (pixels: the nameplate is offset-sized so it stays legible at distance):
-	-- [portrait][ NAME / health bar ]
-	-- [        CALLOUT              ]
-	local portraitPx = TUNE.PortraitPx
-	local textX = portraitPx + 6
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "Nameplate"
-	gui.Size = UDim2.fromOffset(textX + 300, 96)
-	gui.StudsOffset = Vector3.new(0, head.Size.Y + 2.4, 0)
-	gui.MaxDistance = TUNE.NameplateMaxDistance
-	gui.LightInfluence = 0
-	gui.AlwaysOnTop = false
-	gui.Parent = head
-
-	makePortrait(model, head, gui, portraitPx)
-
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -textX, 0, 30)
-	nameLabel.Position = UDim2.fromOffset(textX, 0)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = record.Config.DisplayName:upper()
-	nameLabel.Font = Enum.Font.GothamBlack
-	nameLabel.TextSize = 26
-	nameLabel.TextColor3 = Color3.new(1, 1, 1)
-	nameLabel.TextStrokeTransparency = 0.2
-	nameLabel.Parent = gui
-
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, -textX, 0, 22)
-	bar.Position = UDim2.fromOffset(textX, 32)
-	bar.BackgroundColor3 = Palette.pitch
-	bar.BorderSizePixel = 0
-	bar.Parent = gui
-
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(1, 1)
-	fill.BackgroundColor3 = Palette.bleed
-	fill.BorderSizePixel = 0
-	fill.Parent = bar
-
-	local healthText = Instance.new("TextLabel")
-	healthText.Size = UDim2.fromScale(1, 1)
-	healthText.BackgroundTransparency = 1
-	healthText.Font = Enum.Font.GothamBlack
-	healthText.TextSize = 18
-	healthText.TextColor3 = Color3.new(1, 1, 1)
-	healthText.TextStrokeTransparency = 0.3
-	healthText.ZIndex = 2
-	healthText.Parent = bar
-
-	-- The attack callout. Big, `bleed`, only visible during a wind-up.
-	local callout = Instance.new("TextLabel")
-	callout.Size = UDim2.new(1, 0, 0, 38)
-	callout.Position = UDim2.fromOffset(0, 58)
-	callout.BackgroundTransparency = 1
-	callout.Font = Enum.Font.GothamBlack
-	callout.TextSize = 32
-	callout.TextColor3 = Palette.bleed
-	callout.TextStrokeTransparency = 0
-	callout.Visible = false
-	callout.Parent = gui
-
-	return shoulder, rest, sword, highlight, { Fill = fill, HealthText = healthText, Callout = callout }
-end
-
-local function refreshHealth(f: Fight)
-	local hum: Humanoid = f.Record.Humanoid
-	local frac = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-	f.Nameplate.Fill.Size = UDim2.fromScale(frac, 1)
-	f.Nameplate.HealthText.Text = ("%d / %d"):format(math.ceil(hum.Health), hum.MaxHealth)
+	return shoulder, rest, sword, highlight
 end
 
 local function setPose(f: Fight, pose: string, info: TweenInfo)
-	TweenService:Create(f.Shoulder, info, { C0 = f.ShoulderRest * POSES[pose] }):Play()
+	if f.Shoulder and f.ShoulderRest then
+		TweenService:Create(f.Shoulder, info, { C0 = f.ShoulderRest * POSES[pose] }):Play()
+	end
 end
 
+-- The telegraph. The attack name is published as the model's "Callout" attribute and drawn
+-- by the client's boss bar (BossBarController), next to his health.
 local function setTelegraph(f: Fight, attackName: string?)
 	local on = attackName ~= nil
-	f.Highlight.Enabled = on
-	f.Sword.Material = if on then Enum.Material.Neon else Enum.Material.Metal
-	f.Sword.Color = if on then Palette.bleed else Palette.stone
-	f.Nameplate.Callout.Text = if attackName then attackName .. "!" else ""
-	f.Nameplate.Callout.Visible = on
+	if f.Highlight then
+		f.Highlight.Enabled = on
+	end
+	if f.Sword then
+		f.Sword.Material = if on then Enum.Material.Neon else Enum.Material.Metal
+		f.Sword.Color = if on then Palette.bleed else Palette.stone
+	end
+	f.Record.Model:SetAttribute("Callout", if attackName then attackName .. "!" else "")
 end
 
 -- Paints the exact hit area on the floor for the whole wind-up. What you see is precisely
@@ -506,7 +386,7 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 	local creepTime = attack.WindUp - POSE_TWEEN.Time
 	if not clip and creepTime > 0 then
 		task.delay(POSE_TWEEN.Time, function()
-			if alive(f) and f.Busy then
+			if alive(f) and f.Busy and f.Shoulder and f.ShoulderRest then
 				TweenService:Create(
 					f.Shoulder,
 					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
@@ -523,7 +403,7 @@ local function performAttack(f: Fight, attackId: string, attack, aim: Vector3)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
 		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
-		if not clip then
+		if not clip and f.Shoulder and f.ShoulderRest then
 			TweenService:Create(f.Shoulder, SWING_TWEEN, { C0 = f.ShoulderRest * IMPACTS[attack.Pose] })
 				:Play()
 		end
@@ -690,6 +570,16 @@ local function onDamaged(record, attacker: Player)
 end
 
 local function onKilled(record, killer: Player?)
+	-- The respawn is scheduled whatever state the fight is in. It used to sit behind the
+	-- fight check below, so a Bronn whose fight never formed died and never came back.
+	if not respawnPending then
+		respawnPending = true
+		task.delay(TUNE.RespawnDelay, function()
+			respawnPending = false
+			CaptainService.Spawn()
+		end)
+	end
+
 	local f = fight
 	if not f or f.Record ~= record then
 		return
@@ -709,8 +599,6 @@ local function onKilled(record, killer: Player?)
 			Kind = "milestone",
 		})
 	end
-
-	task.delay(TUNE.RespawnDelay, CaptainService.Spawn)
 end
 
 local function onKilledPlayer(_record, player: Player, attackName: string)
@@ -732,6 +620,23 @@ function CaptainService.Init(context, builtWorld)
 	telegraphs.Parent = workspace
 
 	assert(EnemyConfig.Get(ENEMY_ID), "EnemyConfig is missing " .. ENEMY_ID)
+
+	-- Watchdog: Bronn must be present on every run (playtest 5). If he's missing outside
+	-- his respawn window, for any reason, he's put back and the reason is logged.
+	task.spawn(function()
+		while true do
+			task.wait(TUNE.WatchdogInterval)
+			local f = fight
+			if f and not (f.Record.Model.Parent and f.Record.State ~= "Dead") and not respawnPending then
+				warn("[Captain] Bronn's model is gone without a death; respawning")
+				fight = nil
+			end
+			if not fight and not respawnPending then
+				warn("[Captain] Bronn is missing outside his respawn window; spawning him")
+				CaptainService.Spawn()
+			end
+		end
+	end)
 end
 
 function CaptainService.Spawn()
@@ -749,17 +654,34 @@ function CaptainService.Spawn()
 		OnKilledPlayer = onKilledPlayer,
 	})
 	if not record then
+		warn("[Captain] EnemyService could not spawn Bronn; the watchdog will retry")
 		return
 	end
 
-	local shoulder, shoulderRest, sword, highlight, nameplate = dress(record)
+	-- What clients need to draw his boss bar (name, health from the Humanoid, callout).
+	local model: Model = record.Model
+	model:SetAttribute("Boss", true)
+	model:SetAttribute("BossName", record.Config.DisplayName:upper())
+	model:SetAttribute("Callout", "")
+	-- The boss bar replaces the stock Humanoid bar.
+	record.Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+
+	-- Dressing is presentation. If it fails, say exactly why and fight anyway: a Bronn who
+	-- can't be dressed must still move, attack and die properly.
+	local ok, shoulder, shoulderRest, sword, highlight = xpcall(dress, debug.traceback, record)
+	if not ok then
+		warn("[Captain] Dressing Bronn failed; fighting without costume:\n" .. tostring(shoulder))
+		local joint = model:FindFirstChild("RightShoulder", true)
+		shoulder = if joint and joint:IsA("Motor6D") then joint else nil
+		shoulderRest = if shoulder then shoulder.C0 else nil
+		sword, highlight = nil, nil
+	end
 	local f: Fight = {
 		Record = record,
 		Shoulder = shoulder,
 		ShoulderRest = shoulderRest,
 		Sword = sword,
 		Highlight = highlight,
-		Nameplate = nameplate,
 		Busy = false,
 		InFight = false,
 		RotationIndex = 1,
@@ -770,11 +692,14 @@ function CaptainService.Spawn()
 		Markers = {},
 	}
 	fight = f
-
-	refreshHealth(f)
-	record.Humanoid.HealthChanged:Connect(function()
-		refreshHealth(f)
-	end)
+	respawnPending = false
+	local root = model.PrimaryPart
+	print(
+		("[Captain] Bronn ready: %d HP at %s"):format(
+			record.Humanoid.MaxHealth,
+			if root then tostring(root.Position) else "?"
+		)
+	)
 end
 
 return CaptainService
