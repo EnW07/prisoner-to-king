@@ -22,10 +22,14 @@ local RateLimiter = require(script.Parent.RateLimiter)
 local CombatService = {}
 local ctx
 local AttackRequest: RemoteEvent
+local DashRequest: RemoteEvent
 local Notify: RemoteEvent
 local CombatVisual: RemoteEvent
 
 local lastAttack: { [number]: number } = {}
+-- Dash (E1): the server's own cooldown clock and the invincibility window it grants.
+local lastDash: { [number]: number } = {}
+local invulnerableUntil: { [number]: number } = {}
 -- Light combo stage per player, from the same rule the client predicts with
 -- (GameConfig.Animation.ComboWindow). The server's count is the one that matters (E3).
 local comboStage: { [number]: number } = {}
@@ -39,10 +43,16 @@ function CombatService.Init(context)
 	AttackRequest.OnServerEvent:Connect(function(player)
 		CombatService.HandleAttack(player)
 	end)
+	DashRequest = Net.Event("DashRequest")
+	DashRequest.OnServerEvent:Connect(function(player)
+		CombatService.HandleDash(player)
+	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastAttack[player.UserId] = nil
 		comboStage[player.UserId] = nil
+		lastDash[player.UserId] = nil
+		invulnerableUntil[player.UserId] = nil
 	end)
 end
 
@@ -110,6 +120,7 @@ function CombatService.HandleAttack(player: Player)
 	local parts = workspace:GetPartBoundsInBox(swingCF, swingSize, params)
 
 	local damage = ctx.Economy.GetPlayerDamage(player)
+	local finisher = stage == GameConfig.Combat.FinisherStage
 	local hitModels: { [Model]: boolean } = {}
 	local hits = 0
 
@@ -120,7 +131,14 @@ function CombatService.HandleAttack(player: Player)
 		local model = hitPart:FindFirstAncestorOfClass("Model")
 		if model and not hitModels[model] and model:GetAttribute("EnemyId") then
 			hitModels[model] = true
-			if ctx.EnemyService.ApplyDamage(model, damage, player) then
+			-- The contact point is the overlapped part itself (a limb, a torso), not the
+			-- enemy's centre, so sparks and numbers land where the blade did (E8).
+			local info: any = {
+				Contact = hitPart.Position,
+				Knockback = if finisher then GameConfig.Combat.FinisherKnockback else 0,
+				Finisher = finisher,
+			}
+			if ctx.EnemyService.ApplyDamage(model, damage, player, info) then
 				hits += 1
 			end
 		end
@@ -128,6 +146,43 @@ function CombatService.HandleAttack(player: Player)
 
 	-- Tell the attacker their swing resolved even on a whiff, so feedback never feels dead.
 	Notify:FireClient(player, { Text = "", Kind = if hits > 0 then "hit" else "swing" })
+end
+
+-- ── Dash (E1) ───────────────────────────────────────────────────
+-- The client already burst; this decides whether it COUNTS: a cooldown from the server's
+-- clock, then an invincibility window enemy hits are tested against (EnemyService
+-- .DamagePlayer). Nothing is read from the client but the fact of the request.
+function CombatService.HandleDash(player: Player)
+	if not RateLimiter.Check(player, "Dash", GameConfig.Dash.MaxRate) then
+		return
+	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	local now = os.clock()
+	local last = lastDash[player.UserId] or 0
+	if now - last < GameConfig.Dash.Cooldown - GameConfig.Combat.CooldownGrace then
+		return
+	end
+	lastDash[player.UserId] = now
+	invulnerableUntil[player.UserId] = now + GameConfig.Dash.IFrameWindow
+	ctx.Analytics.Log(player, "DashUsed", 1)
+
+	local profile = ctx.Data.Get(player)
+	local weapon = profile and WeaponConfig.Get(profile.Equipped.WeaponId)
+	local visual = { UserId = player.UserId, Key = "Dash", Weight = weapon and weapon.Weight or "Medium" }
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			CombatVisual:FireClient(other, visual)
+		end
+	end
+end
+
+-- True while the player's last granted dash still protects them.
+function CombatService.IsInvulnerable(player: Player): boolean
+	return os.clock() < (invulnerableUntil[player.UserId] or 0)
 end
 
 -- ── Weapons ─────────────────────────────────────────────────────

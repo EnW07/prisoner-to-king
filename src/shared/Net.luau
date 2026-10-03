@@ -13,6 +13,7 @@ local EVENTS = {
 	"AttackRequest",
 	"EquipRequest", -- a weapon id; the server equips it only if the profile owns it
 	"RespawnRequest", -- TRY AGAIN, zero arguments; the server respawns only a dead player
+	"DashRequest", -- zero arguments; the server grants the i-frames from its own clock
 
 	-- Server → Client
 	"StateUpdate", -- gold, unsecured, weapon, objective, run state
