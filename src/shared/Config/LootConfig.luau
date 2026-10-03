@@ -25,6 +25,46 @@ LootConfig.Tables = {
 		} :: { Entry },
 	},
 
+	archer = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 60 },
+			{ Kind = "Gold", Weight = 40, Min = 5, Max = 12 },
+		} :: { Entry },
+	},
+
+	shield_guard = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 45 },
+			{ Kind = "Gold", Weight = 55, Min = 10, Max = 22 },
+		} :: { Entry },
+	},
+
+	hound = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 85 },
+			{ Kind = "Gold", Weight = 15, Min = 2, Max = 6 },
+		} :: { Entry },
+	},
+
+	sentry = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 60 },
+			{ Kind = "Gold", Weight = 40, Min = 5, Max = 10 },
+		} :: { Entry },
+	},
+
+	brute = {
+		Rolls = 1,
+		Entries = {
+			{ Kind = "None", Weight = 30 },
+			{ Kind = "Gold", Weight = 70, Min = 20, Max = 45 },
+		} :: { Entry },
+	},
+
 	-- M2 brief item 1: the Guard Sword is guaranteed. The weighted Captain's Greatsword
 	-- chance is added with the rare-drops work (m2/rare-drops).
 	captain_bronn = {

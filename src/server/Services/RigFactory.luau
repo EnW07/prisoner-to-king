@@ -206,6 +206,220 @@ local function dress(model: Model, cfg)
 			Palette.stone,
 			Enum.Material.Metal
 		)
+	elseif cfg.Silhouette == "Archer" then
+		-- Lean and hooded, a tall bow in the LEFT hand (the right draws), a quiver on the
+		-- back. No sword: up close it has nothing.
+		if blade then
+			blade:Destroy()
+		end
+		RigFactory.Attach(
+			model,
+			"Head",
+			"Hood",
+			Vector3.new(1.5, 1.3, 1.5),
+			CFrame.new(0, 0.25, 0.1),
+			Color3.fromRGB(45, 55, 45),
+			Enum.Material.Fabric
+		)
+		RigFactory.Attach(
+			model,
+			"LeftHand",
+			"Bow",
+			Vector3.new(0.25, 5.2, 0.35),
+			CFrame.new(0, 0, -0.1),
+			Color3.fromRGB(90, 60, 40),
+			Enum.Material.Wood
+		)
+		RigFactory.Attach(
+			model,
+			"LeftHand",
+			"Bowstring",
+			Vector3.new(0.08, 5, 0.08),
+			CFrame.new(0, 0, 0.3),
+			Palette.stone,
+			Enum.Material.Fabric
+		)
+		RigFactory.Attach(
+			model,
+			"UpperTorso",
+			"Quiver",
+			Vector3.new(0.6, 2.2, 0.6),
+			CFrame.new(0.45, 0.3, 0.75) * CFrame.Angles(0, 0, math.rad(-15)),
+			Color3.fromRGB(90, 60, 40),
+			Enum.Material.Wood
+		)
+	elseif cfg.Silhouette == "Shield" then
+		-- Broad and helmed, a round shield the size of his torso on the LEFT forearm. The
+		-- shield reads from any angle: that is the lock.
+		RigFactory.Attach(
+			model,
+			"Head",
+			"Helm",
+			Vector3.new(1.5, 0.95, 1.5),
+			CFrame.new(0, 0.3, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+		local shield = RigFactory.Attach(
+			model,
+			"LeftLowerArm",
+			"Shield",
+			Vector3.new(0.35, 3.4, 3.4),
+			CFrame.new(-0.55, 0, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+		if shield then
+			shield.Shape = Enum.PartType.Cylinder
+		end
+		RigFactory.Attach(
+			model,
+			"LeftLowerArm",
+			"ShieldBoss",
+			Vector3.new(0.3, 1, 1),
+			CFrame.new(-0.85, 0, 0),
+			Palette.bleed,
+			Enum.Material.Metal
+		)
+	elseif cfg.Silhouette == "Hound" then
+		-- Low and long, hunched toward all fours by its posture (AnimationConfig
+		-- HoundStance): a snout, ears and a tail, dark. No weapon; it is the weapon.
+		if blade then
+			blade:Destroy()
+		end
+		RigFactory.Attach(
+			model,
+			"Head",
+			"Snout",
+			Vector3.new(0.7, 0.6, 0.9),
+			CFrame.new(0, -0.15, -0.8),
+			cfg.BodyColor,
+			Enum.Material.SmoothPlastic
+		)
+		for _, side in { -1, 1 } do
+			RigFactory.Attach(
+				model,
+				"Head",
+				"Ear",
+				Vector3.new(0.3, 0.7, 0.2),
+				CFrame.new(side * 0.5, 0.75, 0) * CFrame.Angles(0, 0, math.rad(side * -20)),
+				cfg.BodyColor,
+				Enum.Material.SmoothPlastic
+			)
+		end
+		RigFactory.Attach(
+			model,
+			"LowerTorso",
+			"Tail",
+			Vector3.new(0.25, 0.25, 1.6),
+			CFrame.new(0, 0.2, 1.1) * CFrame.Angles(math.rad(25), 0, 0),
+			cfg.BodyColor,
+			Enum.Material.SmoothPlastic
+		)
+	elseif cfg.Silhouette == "Sentry" then
+		-- Kneeling (AnimationConfig SentryStance) behind a heavy crossbow held level in both
+		-- hands, a helm. The crossbow is long enough to point down the corridor.
+		if blade then
+			blade:Destroy()
+		end
+		RigFactory.Attach(
+			model,
+			"Head",
+			"Helm",
+			Vector3.new(1.45, 0.9, 1.45),
+			CFrame.new(0, 0.3, 0),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+		RigFactory.Attach(
+			model,
+			"RightHand",
+			"Crossbow",
+			Vector3.new(0.35, 0.4, 3.6),
+			CFrame.new(-0.4, 0.1, -1.1),
+			Color3.fromRGB(90, 60, 40),
+			Enum.Material.Wood
+		)
+		RigFactory.Attach(
+			model,
+			"RightHand",
+			"CrossbowLimb",
+			Vector3.new(3, 0.2, 0.25),
+			CFrame.new(-0.4, 0.15, -2.6),
+			Palette.stone,
+			Enum.Material.Metal
+		)
+	elseif cfg.Silhouette == "Brute" then
+		-- A wall of a man: huge pauldrons, a bare head, a belt, and a club the size of a
+		-- door in the right hand. Reads as "the room is about this" from the far side of it.
+		if blade then
+			blade:Destroy()
+		end
+		for _, side in { "Left", "Right" } do
+			RigFactory.Attach(
+				model,
+				side .. "UpperArm",
+				"Pauldron",
+				Vector3.new(2.2, 0.9, 2.2),
+				CFrame.new(0, 1, 0),
+				Palette.stone,
+				Enum.Material.Metal
+			)
+		end
+		RigFactory.Attach(
+			model,
+			"LowerTorso",
+			"Belt",
+			Vector3.new(4, 0.6, 2.4),
+			CFrame.new(0, -0.6, 0),
+			Palette.pitch,
+			Enum.Material.Metal
+		)
+		RigFactory.Attach(
+			model,
+			"RightHand",
+			"Club",
+			Vector3.new(0.9, 6.5, 0.9),
+			CFrame.Angles(math.rad(30), 0, 0) * CFrame.new(0, -2.6, 0),
+			Color3.fromRGB(90, 60, 40),
+			Enum.Material.Wood
+		)
+		RigFactory.Attach(
+			model,
+			"RightHand",
+			"ClubHead",
+			Vector3.new(1.9, 2.2, 1.9),
+			CFrame.Angles(math.rad(30), 0, 0) * CFrame.new(0, -5.6, 0),
+			Palette.stone,
+			Enum.Material.Slate
+		)
+	end
+end
+
+-- Variety within a type (F7): a small random scale and body tint per spawn, inside
+-- config-defined ranges. Stats never vary; only the look, so a line of guards reads as
+-- people rather than copies. Rule 8: Model:ScaleTo is the 2023 Model API; wrapped.
+function RigFactory.Vary(model: Model, cfg)
+	local v = cfg.Variation
+	if not v then
+		return
+	end
+	local range = v.Scale
+	if range and range[1] and range[2] then
+		local s = range[1] + math.random() * (range[2] - range[1])
+		pcall(function()
+			model:ScaleTo(model:GetScale() * s)
+		end)
+	end
+	local tint = v.Tint or 0
+	if tint > 0 then
+		local k = (math.random() * 2 - 1) * tint
+		local toward = if k < 0 then Palette.pitch else Color3.new(1, 1, 1)
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") and p.Color == cfg.BodyColor then
+				p.Color = cfg.BodyColor:Lerp(toward, math.abs(k))
+			end
+		end
 	end
 end
 
