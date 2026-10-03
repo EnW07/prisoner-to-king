@@ -30,6 +30,9 @@ local GameConfig = {
 		Width = 6,
 		Height = 6,
 		MaxTargetsPerSwing = 3,
+		-- Part cap for the swing's overlap query (enemy parts only). R15 rigs are ~15-20
+		-- parts each with costume, so this covers MaxTargetsPerSwing enemies with room to spare.
+		OverlapMaxParts = 120,
 		-- Grace subtracted from cooldown checks to account for ping. Keep small.
 		CooldownGrace = 0.08,
 		-- Attack requests per second a client may send before being rate limited.
@@ -63,6 +66,12 @@ local GameConfig = {
 		RespawnDelay = 25,
 		CorpseDespawn = 3,
 		LeashDistance = 90,
+		-- R15 rigs (RigFactory): a body this size gets scale 1. It's the M1 guard's BodySize,
+		-- so EnemyConfig.BodySize keeps meaning exactly what it did.
+		RigReferenceSize = Vector3.new(2, 4, 1),
+		-- Spawns: rigs are stood on the floor found by a short ray down from the spawn point.
+		SpawnProbeLift = 2,
+		SpawnProbeDepth = 30,
 	},
 
 	-- ── Captain Bronn (M2) ──────────────────────────────────────

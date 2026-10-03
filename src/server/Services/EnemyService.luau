@@ -1,15 +1,15 @@
 --!strict
 -- EnemyService.lua
 -- Blueprint §46: AI runs on a throttled tick, NOT every frame, and only for relevant NPCs.
--- Rigs are built from Parts so the loop is playable before any custom art exists.
+-- Bodies are real R15 rigs built by RigFactory.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
-local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local RigFactory = require(script.Parent.RigFactory)
 
 local EnemyService = {}
 local ctx
@@ -26,6 +26,8 @@ function EnemyService.Init(context)
 	container = Instance.new("Folder")
 	container.Name = "Enemies"
 	container.Parent = workspace
+
+	RigFactory.Prewarm(EnemyConfig)
 
 	RunService.Heartbeat:Connect(function(dt)
 		accumulator += dt
@@ -49,201 +51,20 @@ function EnemyService.Init(context)
 end
 
 -- ── Rig construction ────────────────────────────────────────────
--- A welded, massless, non-colliding piece of costume. Swings still hit it (it's in the
--- enemy model), which only makes a silhouette easier to hit, never harder.
-local function costume(
-	model: Model,
-	root: BasePart,
-	name: string,
-	size: Vector3,
-	cf: CFrame,
-	color: Color3,
-	material: Enum.Material
-): Part
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = material
-	p.CanCollide = false
-	p.Massless = true
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = model
-	local w = Instance.new("WeldConstraint")
-	w.Part0 = root
-	w.Part1 = p
-	w.Parent = p
-	return p
-end
-
--- Silhouettes (VISUAL_OVERHAUL_PLAN Phase 3, art §4/§8: enemy readability first). Each
--- enemy type must be recognisable as a black shape. Captain Bronn is dressed separately
--- by CaptainService. Shapes are rig geometry; colours are palette tokens.
--- Move a part that is already welded to root, then weld it again at its new offset, so the
--- result never depends on when a WeldConstraint captures its offset.
-local function moveWelded(root: BasePart, p: BasePart, cf: CFrame)
-	for _, w in root:GetChildren() do
-		if w:IsA("WeldConstraint") and w.Part1 == p then
-			w:Destroy()
-		end
-	end
-	p.CFrame = cf
-	local w = Instance.new("WeldConstraint")
-	w.Part0 = root
-	w.Part1 = p
-	w.Parent = root
-end
-
-local function dressSilhouette(
-	model: Model,
-	root: BasePart,
-	head: BasePart,
-	blade: BasePart,
-	cfg,
-	cframe: CFrame
-)
-	local body: Vector3 = cfg.BodySize
-	if cfg.Silhouette == "Slouch" then
-		-- Hunched: head dropped forward, a floppy cap, a paunch, the sword hanging limp.
-		moveWelded(root, head, cframe * CFrame.new(0, body.Y / 2 + 0.5, -0.5))
-		costume(
-			model,
-			root,
-			"Cap",
-			Vector3.new(1.7, 0.45, 1.7),
-			head.CFrame * CFrame.new(0, 0.8, 0.2) * CFrame.Angles(math.rad(-15), 0, math.rad(10)),
-			Palette.stone,
-			Enum.Material.Fabric
-		)
-		costume(
-			model,
-			root,
-			"Paunch",
-			Vector3.new(1.7, 1.4, 0.6),
-			cframe * CFrame.new(0, -0.3, -0.7),
-			cfg.BodyColor,
-			Enum.Material.SmoothPlastic
-		)
-		moveWelded(root, blade, cframe * CFrame.new(1.3, -0.9, -0.2) * CFrame.Angles(0, 0, math.rad(25)))
-	elseif cfg.Silhouette == "Armored" then
-		-- Upright and armoured: a helm with a nasal guard, pauldrons, a `bleed` tabard
-		-- (danger, art §3) and a spear that stands well above the head.
-		costume(
-			model,
-			root,
-			"Helm",
-			head.Size + Vector3.new(0.4, 0.3, 0.4),
-			head.CFrame * CFrame.new(0, 0.2, 0),
-			Palette.stone,
-			Enum.Material.Metal
-		)
-		costume(
-			model,
-			root,
-			"Nasal",
-			Vector3.new(0.25, 0.9, 0.2),
-			head.CFrame * CFrame.new(0, -0.1, -0.85),
-			Palette.stone,
-			Enum.Material.Metal
-		)
-		for _, side in { -1, 1 } do
-			costume(
-				model,
-				root,
-				"Pauldron",
-				Vector3.new(0.9, 0.6, 1.4),
-				cframe * CFrame.new(side * (body.X / 2 + 0.3), body.Y / 2 - 0.3, 0),
-				Palette.stone,
-				Enum.Material.Metal
-			)
-		end
-		costume(
-			model,
-			root,
-			"Tabard",
-			Vector3.new(body.X - 0.4, body.Y - 0.8, 0.15),
-			cframe * CFrame.new(0, -0.2, -body.Z / 2 - 0.08),
-			Palette.bleed,
-			Enum.Material.Fabric
-		)
-		blade.Size = Vector3.new(0.25, 7.5, 0.25) -- the shaft: blade becomes a spear
-		blade.Color = Palette.pitch
-		moveWelded(root, blade, cframe * CFrame.new(1.4, 1.2, -0.4))
-		costume(
-			model,
-			root,
-			"Spearhead",
-			Vector3.new(0.5, 1.2, 0.2),
-			blade.CFrame * CFrame.new(0, 4.3, 0),
-			Palette.stone,
-			Enum.Material.Metal
-		)
-	end
-end
-
--- A minimal Humanoid rig: HumanoidRootPart + Head is enough for Humanoid:MoveTo.
--- Replace this whole function with a real rig later; nothing else depends on its internals.
-local function buildRig(cfg, cframe: CFrame): (Model, Humanoid)
-	local model = Instance.new("Model")
-	model.Name = cfg.DisplayName
-
-	local root = Instance.new("Part")
-	root.Name = "HumanoidRootPart"
-	root.Size = cfg.BodySize
-	root.Color = cfg.BodyColor
-	root.Material = Enum.Material.SmoothPlastic
-	root.CFrame = cframe
-	root.TopSurface = Enum.SurfaceType.Smooth
-	root.BottomSurface = Enum.SurfaceType.Smooth
-	root.Parent = model
-
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.Size = Vector3.new(1.4, 1.4, 1.4)
-	head.Color = Color3.fromRGB(215, 190, 160)
-	head.Material = Enum.Material.SmoothPlastic
-	head.CanCollide = false
-	head.CFrame = cframe * CFrame.new(0, cfg.BodySize.Y / 2 + 0.8, 0)
-	head.Parent = model
-
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = root
-	weld.Part1 = head
-	weld.Parent = root
-
-	-- A stubby weapon so the silhouette reads as "armed guard" (§36 strong silhouettes).
-	local blade = Instance.new("Part")
-	blade.Name = "Blade"
-	blade.Size = Vector3.new(0.3, 2.6, 0.3)
-	blade.Color = Color3.fromRGB(170, 170, 180)
-	blade.Material = Enum.Material.Metal
-	blade.CanCollide = false
-	blade.CFrame = cframe * CFrame.new(1.4, 0, -0.4)
-	blade.Parent = model
-	local bweld = Instance.new("WeldConstraint")
-	bweld.Part0 = root
-	bweld.Part1 = blade
-	bweld.Parent = root
-
-	dressSilhouette(model, root, head, blade, cfg, cframe)
-
-	local humanoid = Instance.new("Humanoid")
+-- Real R15 rigs from RigFactory (playtest 4: the old part-built rigs had no limbs, so
+-- nothing could animate and guards slid). The body is an implementation detail: every
+-- stat still comes from EnemyConfig, unchanged.
+local function buildRig(enemyId: string, cfg, cframe: CFrame): (Model, Humanoid)
+	local model = RigFactory.Build(enemyId, cfg)
+	local humanoid = model:FindFirstChildOfClass("Humanoid") :: Humanoid
 	humanoid.MaxHealth = cfg.MaxHealth
 	humanoid.Health = cfg.MaxHealth
 	humanoid.WalkSpeed = cfg.MoveSpeed
-	humanoid.HipHeight = 0
 	humanoid.BreakJointsOnDeath = false
-	-- CRITICAL for part-built rigs: a Humanoid with no Neck Motor6D will kill itself
-	-- within a few seconds unless RequiresNeck is disabled.
-	humanoid.RequiresNeck = false
 	humanoid.DisplayName = cfg.DisplayName
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-	humanoid.Parent = model
-
-	model.PrimaryPart = root
+	RigFactory.PlaceOnFloor(model, cframe)
 	return model, humanoid
 end
 
@@ -268,7 +89,7 @@ function EnemyService.Spawn(enemyId: string, cframe: CFrame, options: SpawnOptio
 	end
 	local opts = options or {}
 
-	local model, humanoid = buildRig(cfg, cframe)
+	local model, humanoid = buildRig(enemyId, cfg, cframe)
 	model:SetAttribute("EnemyId", enemyId)
 	model.Parent = container
 
@@ -486,6 +307,11 @@ function EnemyService.ClearAll()
 		active[model] = nil
 		model:Destroy()
 	end
+end
+
+-- The folder every enemy model lives in. CombatService limits its swing query to it.
+function EnemyService.GetContainer(): Folder
+	return container
 end
 
 -- All living enemies, used by CombatService hit detection.

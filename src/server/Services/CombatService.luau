@@ -76,10 +76,14 @@ function CombatService.HandleAttack(player: Player)
 	local swingCF = root.CFrame * CFrame.new(0, 0, -range / 2)
 	local swingSize = Vector3.new(GameConfig.Combat.Width, GameConfig.Combat.Height, range)
 
+	-- Only enemy parts can be hit, so the query is limited to the Enemies folder. That also
+	-- excludes the attacker. An R15 enemy is ~15+ parts plus costume, so the old 24-part
+	-- cap could fill up on one guard and hide a second. The cap is now sized for several
+	-- full rigs. MaxTargetsPerSwing still counts distinct enemies (models), not parts.
 	local params = OverlapParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character }
-	params.MaxParts = 24
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { ctx.EnemyService.GetContainer() }
+	params.MaxParts = GameConfig.Combat.OverlapMaxParts
 
 	local parts = workspace:GetPartBoundsInBox(swingCF, swingSize, params)
 

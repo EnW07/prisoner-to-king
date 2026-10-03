@@ -22,6 +22,7 @@ local GameConfig = require(game.ReplicatedStorage.Shared.Config.GameConfig)
 local EnemyConfig = require(game.ReplicatedStorage.Shared.Config.EnemyConfig)
 local Palette = require(game.ReplicatedStorage.Shared.Config.Palette)
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local RigFactory = require(script.Parent.RigFactory)
 
 local CaptainService = {}
 local ctx
@@ -32,23 +33,33 @@ local telegraphs: Folder
 local ENEMY_ID = "captain_bronn"
 local TUNE = GameConfig.Captain
 
--- Sword poses relative to his root. These are rig geometry, like WorldBuilder coordinates,
--- not balance values. Each wind-up pose must be readable as a silhouette on its own.
+-- Arm poses: rotations of his RightShoulder joint relative to its rest C0. These are rig
+-- geometry, not balance values. The greatsword sits in his right hand, so the arm pose IS the
+-- sword pose. Each wind-up must read as a silhouette on its own.
+-- Axes (joint space): +X raises the arm forward and up; +Z raises it out to his right.
 local POSES = {
-	Rest = CFrame.new(2.6, -0.5, -0.8) * CFrame.Angles(math.rad(-25), 0, 0), -- held low
-	Cleave = CFrame.new(3.6, 1.5, 1) * CFrame.Angles(0, 0, math.rad(-75)), -- drawn back wide
-	Overhead = CFrame.new(0.8, 6.5, 0) * CFrame.Angles(math.rad(10), 0, 0), -- raised straight up
-	Lowered = CFrame.new(1.6, -0.5, -3) * CFrame.Angles(math.rad(-80), 0, 0), -- levelled like a lance
+	Rest = CFrame.Angles(math.rad(20), 0, 0), -- hanging, a little forward
+	Cleave = CFrame.Angles(0, math.rad(-45), math.rad(90)), -- out to the side, drawn back
+	Overhead = CFrame.Angles(math.rad(170), 0, 0), -- raised straight up
+	Lowered = CFrame.Angles(math.rad(80), 0, 0), -- levelled forward like a lance
 }
--- Where each wind-up ends at the moment of impact. Same rig-geometry rule as POSES.
+-- Where each wind-up ends at the moment of impact.
 local IMPACTS = {
-	Cleave = CFrame.new(-2.8, 0.5, -2.6) * CFrame.Angles(math.rad(-90), math.rad(70), 0), -- swept across
-	Overhead = CFrame.new(0.8, -1.2, -5) * CFrame.Angles(math.rad(-105), 0, 0), -- slammed into the floor
-	Lowered = CFrame.new(1.6, -0.5, -4.6) * CFrame.Angles(math.rad(-90), 0, 0), -- thrust home
+	Cleave = CFrame.Angles(0, math.rad(120), math.rad(90)), -- swept across to his left
+	Overhead = CFrame.Angles(math.rad(65), 0, 0), -- slammed down in front
+	Lowered = CFrame.Angles(math.rad(95), 0, 0), -- thrust home
 }
 -- Anticipation: after snapping into the wind-up he keeps drawing back, slowly, until the
 -- release. It reads as a coiled spring, and it tells you the blow is still coming.
-local ANTICIPATION_CREEP = CFrame.Angles(math.rad(-14), 0, 0)
+-- Applied before the pose (CREEP * POSE), so it deepens the same motion.
+local CREEP = {
+	Cleave = CFrame.Angles(0, math.rad(-15), 0),
+	Overhead = CFrame.Angles(math.rad(12), 0, 0),
+	Lowered = CFrame.Angles(math.rad(-10), 0, 0),
+}
+-- The greatsword in his palm: blade along the arm's line, angled 40 degrees forward.
+local SWORD_SIZE = Vector3.new(0.8, 7.5, 0.35)
+local SWORD_GRIP = CFrame.Angles(math.rad(40), 0, 0) * CFrame.new(0, -(SWORD_SIZE.Y / 2 - 0.8), 0)
 local POSE_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SWING_TWEEN = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
@@ -56,7 +67,8 @@ type Nameplate = { Fill: Frame, HealthText: TextLabel, Callout: TextLabel }
 
 type Fight = {
 	Record: any,
-	Grip: Weld,
+	Shoulder: Motor6D,
+	ShoulderRest: CFrame,
 	Sword: BasePart,
 	Highlight: Highlight,
 	Nameplate: Nameplate,
@@ -152,98 +164,65 @@ local function notifyEngaged(f: Fight, payload)
 	end
 end
 
-local function weld(part0: BasePart, part1: BasePart)
-	local w = Instance.new("WeldConstraint")
-	w.Part0 = part0
-	w.Part1 = part1
-	w.Parent = part1
-end
-
-local function armourPart(
-	name: string,
-	size: Vector3,
-	cf: CFrame,
-	color: Color3,
-	material: Enum.Material,
-	parent: Instance
-): Part
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = material
-	p.CanCollide = false
-	p.Massless = true
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = parent
-	return p
-end
-
 -- ── Presentation ────────────────────────────────────────────────
--- Silhouette: wider, taller and differently proportioned than any guard (art §8 priority 1),
--- with a crested helm, pauldrons and an oversized greatsword. Readable as a black shape.
-local function dress(record): (Weld, BasePart, Highlight, Nameplate)
+-- Silhouette: an R15 rig scaled from EnemyConfig (RigFactory), so he is genuinely taller,
+-- broader and bulkier than any guard. Dressed with pauldrons, a crested helm and an oversized
+-- greatsword held in his hand. Readable as a black shape (art §8 priority 1).
+local function dress(record): (Motor6D, CFrame, BasePart, Highlight, Nameplate)
 	local model: Model = record.Model
-	local root = model.PrimaryPart :: BasePart
 	local head = model:FindFirstChild("Head") :: BasePart
-	local body: Vector3 = record.Config.BodySize
-
-	local stockBlade = model:FindFirstChild("Blade")
-	if stockBlade then
-		stockBlade:Destroy()
-	end
 
 	-- His own nameplate replaces the stock Humanoid one.
 	record.Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 
-	for _, side in { -1, 1 } do
-		local pauldron = armourPart(
-			"Pauldron",
-			Vector3.new(1.8, 1.1, body.Z + 0.6),
-			root.CFrame * CFrame.new(side * (body.X / 2 + 0.5), body.Y / 2 - 0.4, 0),
-			Palette.stone,
-			Enum.Material.Metal,
-			model
-		)
-		weld(root, pauldron)
+	for _, side in { "Left", "Right" } do
+		local arm = model:FindFirstChild(side .. "UpperArm") :: BasePart?
+		if arm then
+			RigFactory.Attach(
+				model,
+				side .. "UpperArm",
+				"Pauldron",
+				Vector3.new(arm.Size.X + 1, arm.Size.Y * 0.35, arm.Size.Z + 1),
+				CFrame.new(0, arm.Size.Y / 2, 0),
+				Palette.stone,
+				Enum.Material.Metal
+			)
+		end
 	end
-
-	local helm = armourPart(
+	RigFactory.Attach(
+		model,
+		"Head",
 		"Helm",
 		head.Size + Vector3.new(0.5, 0.4, 0.5),
-		head.CFrame,
+		CFrame.new(0, 0.2, 0),
 		Palette.stone,
-		Enum.Material.Metal,
-		model
+		Enum.Material.Metal
 	)
-	weld(root, helm)
-	local crest = armourPart(
+	RigFactory.Attach(
+		model,
+		"Head",
 		"Crest",
 		Vector3.new(0.4, 1.2, head.Size.Z + 0.6),
-		head.CFrame * CFrame.new(0, head.Size.Y / 2 + 0.7, 0),
+		CFrame.new(0, head.Size.Y / 2 + 0.7, 0),
 		Palette.bleed,
-		Enum.Material.SmoothPlastic,
-		model
+		Enum.Material.SmoothPlastic
 	)
-	weld(root, crest)
-
-	-- The greatsword. A real Weld (not a constraint) so C0 can be tweened between poses.
-	local sword = armourPart(
+	local sword = RigFactory.Attach(
+		model,
+		"RightHand",
 		"Greatsword",
-		Vector3.new(0.8, 7.5, 0.35),
-		root.CFrame * POSES.Rest,
+		SWORD_SIZE,
+		SWORD_GRIP,
 		Palette.stone,
-		Enum.Material.Metal,
-		model
-	)
-	local grip = Instance.new("Weld")
-	grip.Name = "Grip"
-	grip.Part0 = root
-	grip.Part1 = sword
-	grip.C0 = POSES.Rest
-	grip.Parent = sword
+		Enum.Material.Metal
+	) :: BasePart
+
+	-- His attacks move the real arm. The shoulder's rest C0 is captured once, and every pose
+	-- is relative to it, so the rig's own scale and proportions are preserved.
+	local shoulder = model:FindFirstChild("RightShoulder", true) :: Motor6D
+	assert(shoulder and shoulder:IsA("Motor6D"), "Captain Bronn's rig has no RightShoulder joint")
+	local rest = shoulder.C0
+	shoulder.C0 = rest * POSES.Rest
 
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
@@ -311,7 +290,7 @@ local function dress(record): (Weld, BasePart, Highlight, Nameplate)
 	callout.Visible = false
 	callout.Parent = gui
 
-	return grip, sword, highlight, { Fill = fill, HealthText = healthText, Callout = callout }
+	return shoulder, rest, sword, highlight, { Fill = fill, HealthText = healthText, Callout = callout }
 end
 
 local function refreshHealth(f: Fight)
@@ -322,7 +301,7 @@ local function refreshHealth(f: Fight)
 end
 
 local function setPose(f: Fight, pose: string, info: TweenInfo)
-	TweenService:Create(f.Grip, info, { C0 = POSES[pose] }):Play()
+	TweenService:Create(f.Shoulder, info, { C0 = f.ShoulderRest * POSES[pose] }):Play()
 end
 
 local function setTelegraph(f: Fight, attackName: string?)
@@ -337,8 +316,10 @@ end
 -- Paints the exact hit area on the floor for the whole wind-up. What you see is precisely
 -- what the server will test: both use the same `origin` and the same attack data.
 local function makeMarker(f: Fight, attack, origin: CFrame, reach: number): BasePart
-	local body: Vector3 = f.Record.Config.BodySize
-	local floor = origin * CFrame.new(0, -body.Y / 2 + 0.08, 0)
+	-- His feet: root centre minus hip height and half the root. Correct at any rig scale.
+	local root = f.Record.Model.PrimaryPart :: BasePart
+	local drop = (f.Record.Humanoid :: Humanoid).HipHeight + root.Size.Y / 2
+	local floor = origin * CFrame.new(0, -drop + 0.08, 0)
 
 	local p = Instance.new("Part")
 	p.Name = "Telegraph"
@@ -459,9 +440,9 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 		task.delay(POSE_TWEEN.Time, function()
 			if alive(f) and f.Busy then
 				TweenService:Create(
-					f.Grip,
+					f.Shoulder,
 					TweenInfo.new(creepTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-					{ C0 = POSES[attack.Pose] * ANTICIPATION_CREEP }
+					{ C0 = f.ShoulderRest * CREEP[attack.Pose] * POSES[attack.Pose] }
 				):Play()
 			end
 		end)
@@ -474,7 +455,7 @@ local function performAttack(f: Fight, attack, aim: Vector3)
 		marker.Transparency = 0
 		setTelegraph(f, nil)
 		-- 2. Impact: a fast swing into the impact pose, then the blow HOLDS (impact pause).
-		TweenService:Create(f.Grip, SWING_TWEEN, { C0 = IMPACTS[attack.Pose] }):Play()
+		TweenService:Create(f.Shoulder, SWING_TWEEN, { C0 = f.ShoulderRest * IMPACTS[attack.Pose] }):Play()
 		if attack.Shape == "Charge" then
 			charge(f, attack, destination, damage)
 		else
@@ -698,10 +679,11 @@ function CaptainService.Spawn()
 		return
 	end
 
-	local grip, sword, highlight, nameplate = dress(record)
+	local shoulder, shoulderRest, sword, highlight, nameplate = dress(record)
 	local f: Fight = {
 		Record = record,
-		Grip = grip,
+		Shoulder = shoulder,
+		ShoulderRest = shoulderRest,
 		Sword = sword,
 		Highlight = highlight,
 		Nameplate = nameplate,
