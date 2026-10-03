@@ -74,6 +74,7 @@ function EconomyService.PushState(player: Player)
 		HasKey = run and run.HasKey or false,
 		Weapon = weapon and weapon.Name or "Fists",
 		WeaponId = profile.Equipped.WeaponId, -- for the HUD's 3D weapon icon
+		OwnedWeapons = table.clone(profile.Inventory.Weapons), -- the inventory grid (a copy)
 		WeaponDamage = EconomyService.GetPlayerDamage(player),
 		Objective = run and run.Objective or "",
 		RunState = run and run.State or "Safe",

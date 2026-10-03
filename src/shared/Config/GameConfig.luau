@@ -39,6 +39,12 @@ local GameConfig = {
 		MaxAttackRate = 5,
 	},
 
+	-- ── Inventory (M2 item 4) ──────────────────────────────────
+	Inventory = {
+		MaxEquipRate = 3, -- equip requests per second before rate limiting
+		MaxWeaponIdLength = 64, -- reject anything longer before even looking it up
+	},
+
 	-- ── Run / extraction ────────────────────────────────────────
 	Run = {
 		ExtractionChannelTime = 3, -- hold duration on the extraction pad
@@ -131,6 +137,11 @@ local GameConfig = {
 		ViewportMargin = 1.08, -- 1 = the model's largest extent exactly fills the view
 		ViewportTiltDegrees = 45, -- weapons shown on the diagonal
 		ViewportSpinSpeed = 45, -- degrees per second, spinning icons only
+		-- Inventory grid: cell size as a fraction of the grid (3 across), and how far the
+		-- rarity colour is darkened into `pitch` at the top of a slot's background gradient.
+		InventoryCellWidth = 0.3,
+		InventoryCellHeight = 0.46,
+		RarityGradientDarken = 0.55,
 		PopTime = 0.18, -- small "something changed" scale bounce
 		PopScale = 1.12,
 		PressScale = 0.9, -- touch button squash on press

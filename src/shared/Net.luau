@@ -11,6 +11,7 @@ local IS_SERVER = RunService:IsServer()
 local EVENTS = {
 	-- Client → Server (intents only; the server never trusts a value from these)
 	"AttackRequest",
+	"EquipRequest", -- a weapon id; the server equips it only if the profile owns it
 
 	-- Server → Client
 	"StateUpdate", -- gold, unsecured, weapon, objective, run state
